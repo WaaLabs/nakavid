@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nakavid}
+      POSTGRES_USER: ${POSTGRES_USER:-nakavid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nakavid}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nakavid} -d ${POSTGRES_DB:-nakavid}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  caddy:
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ${NAKAVID_STORAGE_ROOT:-./data/nakavid/}:/srv/nakavid:ro
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
