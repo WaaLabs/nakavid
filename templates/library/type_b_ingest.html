@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Type B ingest — NakaVid</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 40rem;
+      }
+      .drop-zone {
+        border: 2px dashed #888;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        text-align: center;
+        margin-bottom: 1rem;
+      }
+      .drop-zone.dragover {
+        border-color: #2563eb;
+        background: #eff6ff;
+      }
+      .field {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .messages {
+        margin-bottom: 1rem;
+        color: #166534;
+      }
+      .errors {
+        color: #b91c1c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Type B ingest</h1>
+    <p>Upload an in-the-moment clip with class, date, and theme metadata.</p>
+
+    {% if messages %}
+    <div class="messages">
+      {% for message in messages %}
+      <p>{{ message }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" id="ingest-form">
+      {% csrf_token %}
+
+      <div
+        class="drop-zone"
+        id="drop-zone"
+        tabindex="0"
+        role="button"
+        aria-label="Drop a video file here or choose a file"
+      >
+        <p>Drag and drop a video file here, or choose a file.</p>
+        <p>
+          <label for="id_video_file">Choose file</label>
+        </p>
+        {{ form.video_file }}
+        <p id="selected-file"></p>
+      </div>
+      {% if form.video_file.errors %}
+      <div class="errors">{{ form.video_file.errors }}</div>
+      {% endif %}
+
+      <div class="field">
+        <label for="id_class_name">Class</label>
+        {{ form.class_name }}
+        {% if form.class_name.errors %}
+        <div class="errors">{{ form.class_name.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label for="id_theme">Theme</label>
+        {{ form.theme }}
+        {% if form.theme.errors %}
+        <div class="errors">{{ form.theme.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label for="id_recorded_at">Date</label>
+        {{ form.recorded_at }}
+        {% if form.recorded_at.errors %}
+        <div class="errors">{{ form.recorded_at.errors }}</div>
+        {% endif %}
+      </div>
+
+      <button type="submit">Upload Type B clip</button>
+    </form>
+
+    <script>
+      const dropZone = document.getElementById("drop-zone");
+      const fileInput = document.getElementById("id_video_file");
+      const selectedFile = document.getElementById("selected-file");
+
+      function showSelectedFile(file) {
+        selectedFile.textContent = file ? `Selected: ${file.name}` : "";
+      }
+
+      fileInput.addEventListener("change", () => {
+        showSelectedFile(fileInput.files[0]);
+      });
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          dropZone.classList.add("dragover");
+        });
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          dropZone.classList.remove("dragover");
+        });
+      });
+
+      dropZone.addEventListener("drop", (event) => {
+        const files = event.dataTransfer.files;
+        if (!files.length) {
+          return;
+        }
+        fileInput.files = files;
+        showSelectedFile(files[0]);
+      });
+
+      dropZone.addEventListener("click", () => fileInput.click());
+      dropZone.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          fileInput.click();
+        }
+      });
+    </script>
+  </body>
+</html>

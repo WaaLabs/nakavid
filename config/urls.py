@@ -3,6 +3,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.urls import include, path
 
+from apps.library.views import type_b_ingest
+
 
 def healthcheck(_request):
     return JsonResponse({"ok": True})
@@ -18,4 +20,5 @@ urlpatterns = [
     path("accounts/", include("django.contrib.auth.urls")),
     path("healthz/", healthcheck, name="healthcheck"),
     path("session/", session_info, name="session-info"),
+    path("ingest/type-b/", type_b_ingest, name="type-b-ingest"),
 ]
