@@ -21,15 +21,18 @@ def storage_root(tmp_path, settings):
 
 
 @pytest.fixture
-def authenticated_client(client):
-    user = User.objects.create_user(username="coach", password="secret123!")
-    assert client.login(username="coach", password="secret123!")
-    return client, user
+def coach_user(db):
+    return User.objects.create_user(username="coach", password="secret123!")
 
 
 @pytest.fixture
-def sample_clips(db, authenticated_client, storage_root):
-    _client, user = authenticated_client
+def authenticated_client(client, coach_user):
+    assert client.login(username="coach", password="secret123!")
+    return client, coach_user
+
+
+@pytest.fixture
+def sample_clips(db, coach_user, storage_root):
     recorded_a = timezone.make_aware(datetime(2026, 7, 1, 12, 0))
     recorded_b = timezone.make_aware(datetime(2026, 7, 7, 12, 0))
 
@@ -44,7 +47,7 @@ def sample_clips(db, authenticated_client, storage_root):
         theme="Animals",
         recorded_at=recorded_a,
         duration_seconds=120,
-        created_by=user,
+        created_by=coach_user,
     )
     video_b = Video.objects.create(
         title="crowd_reaction",
@@ -57,7 +60,7 @@ def sample_clips(db, authenticated_client, storage_root):
         theme="Games",
         recorded_at=recorded_b,
         duration_seconds=45,
-        created_by=user,
+        created_by=coach_user,
     )
 
     clip_a = Clip.objects.create(
@@ -66,7 +69,7 @@ def sample_clips(db, authenticated_client, storage_root):
         start_seconds=Decimal("0.000"),
         end_seconds=Decimal("120.000"),
         highlight_score=40,
-        created_by=user,
+        created_by=coach_user,
     )
     clip_b = Clip.objects.create(
         video=video_b,
@@ -74,7 +77,7 @@ def sample_clips(db, authenticated_client, storage_root):
         start_seconds=Decimal("0.000"),
         end_seconds=Decimal("45.000"),
         highlight_score=80,
-        created_by=user,
+        created_by=coach_user,
     )
     return clip_a, clip_b
 
