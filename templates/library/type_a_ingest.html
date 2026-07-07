@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Type A ingest — NakaVid</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 40rem;
+      }
+      .drop-zone {
+        border: 2px dashed #888;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        text-align: center;
+        margin-bottom: 1rem;
+      }
+      .drop-zone.dragover {
+        border-color: #2563eb;
+        background: #eff6ff;
+      }
+      .field {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .messages {
+        margin-bottom: 1rem;
+        color: #166534;
+      }
+      .errors,
+      .status-error {
+        color: #b91c1c;
+      }
+      .status {
+        margin-top: 1rem;
+        color: #1e3a8a;
+      }
+      progress {
+        width: 100%;
+        height: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Type A ingest</h1>
+    <p>Upload a long recording with class, date, and theme metadata. Large files resume after a dropped connection.</p>
+
+    <div id="messages" class="messages" hidden></div>
+
+    <form id="ingest-form">
+      {% csrf_token %}
+
+      <div
+        class="drop-zone"
+        id="drop-zone"
+        tabindex="0"
+        role="button"
+        aria-label="Drop a video file here or choose a file"
+      >
+        <p>Drag and drop a Type A recording here, or choose a file.</p>
+        <p>
+          <label for="video-file">Choose file</label>
+        </p>
+        <input type="file" id="video-file" accept="video/*" />
+        <p id="selected-file"></p>
+      </div>
+
+      <div class="field">
+        <label for="class-name">Class</label>
+        <input type="text" id="class-name" name="class_name" required />
+      </div>
+
+      <div class="field">
+        <label for="theme">Theme</label>
+        <input type="text" id="theme" name="theme" required />
+      </div>
+
+      <div class="field">
+        <label for="recorded-at">Date</label>
+        <input type="date" id="recorded-at" name="recorded_at" required />
+      </div>
+
+      <button type="submit" id="upload-button">Upload Type A recording</button>
+    </form>
+
+    <div class="status" id="upload-status" hidden>
+      <progress id="upload-progress" value="0" max="100"></progress>
+      <p id="upload-status-text"></p>
+    </div>
+
+    <script>
+      const TUS_RESUMABLE = "1.0.0";
+      const CHUNK_SIZE = 1024 * 1024;
+      const CREATE_URL = "{% url 'type-a-upload-create' %}";
+
+      const dropZone = document.getElementById("drop-zone");
+      const fileInput = document.getElementById("video-file");
+      const selectedFile = document.getElementById("selected-file");
+      const ingestForm = document.getElementById("ingest-form");
+      const uploadButton = document.getElementById("upload-button");
+      const uploadStatus = document.getElementById("upload-status");
+      const uploadProgress = document.getElementById("upload-progress");
+      const uploadStatusText = document.getElementById("upload-status-text");
+      const messages = document.getElementById("messages");
+
+      function getCsrfToken() {
+        return document.querySelector("input[name=csrfmiddlewaretoken]").value;
+      }
+
+      function showMessage(text, isError = false) {
+        messages.hidden = false;
+        messages.className = isError ? "status-error" : "messages";
+        messages.textContent = text;
+      }
+
+      function showSelectedFile(file) {
+        selectedFile.textContent = file ? `Selected: ${file.name}` : "";
+      }
+
+      fileInput.addEventListener("change", () => {
+        showSelectedFile(fileInput.files[0]);
+      });
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          dropZone.classList.add("dragover");
+        });
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          dropZone.classList.remove("dragover");
+        });
+      });
+
+      dropZone.addEventListener("drop", (event) => {
+        const files = event.dataTransfer.files;
+        if (!files.length) {
+          return;
+        }
+        fileInput.files = files;
+        showSelectedFile(files[0]);
+      });
+
+      dropZone.addEventListener("click", () => fileInput.click());
+      dropZone.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          fileInput.click();
+        }
+      });
+
+      async function createUpload(file, metadata) {
+        const response = await fetch(CREATE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Tus-Resumable": TUS_RESUMABLE,
+            "X-CSRFToken": getCsrfToken(),
+          },
+          body: JSON.stringify({
+            class_name: metadata.className,
+            theme: metadata.theme,
+            recorded_at: metadata.recordedAt,
+            filename: file.name,
+            upload_length: file.size,
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || "Failed to create upload session.");
+        }
+
+        return response.headers.get("Location");
+      }
+
+      async function getUploadOffset(uploadUrl) {
+        const response = await fetch(uploadUrl, {
+          method: "HEAD",
+          headers: {
+            "Tus-Resumable": TUS_RESUMABLE,
+            "X-CSRFToken": getCsrfToken(),
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to read upload offset.");
+        }
+
+        return Number.parseInt(response.headers.get("Upload-Offset") || "0", 10);
+      }
+
+      async function uploadChunk(uploadUrl, file, offset) {
+        const chunkEnd = Math.min(offset + CHUNK_SIZE, file.size);
+        const chunk = file.slice(offset, chunkEnd);
+        const response = await fetch(uploadUrl, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/offset+octet-stream",
+            "Upload-Offset": String(offset),
+            "Tus-Resumable": TUS_RESUMABLE,
+            "X-CSRFToken": getCsrfToken(),
+          },
+          body: chunk,
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || "Chunk upload failed.");
+        }
+
+        return Number.parseInt(response.headers.get("Upload-Offset") || "0", 10);
+      }
+
+      async function uploadFile(file, metadata) {
+        let uploadUrl = localStorage.getItem(`nakavid:type-a:${file.name}:${file.size}`);
+        if (uploadUrl) {
+          try {
+            const offset = await getUploadOffset(uploadUrl);
+            if (offset >= file.size) {
+              localStorage.removeItem(`nakavid:type-a:${file.name}:${file.size}`);
+              uploadUrl = null;
+            }
+          } catch (_error) {
+            uploadUrl = null;
+          }
+        }
+
+        if (!uploadUrl) {
+          uploadUrl = await createUpload(file, metadata);
+          localStorage.setItem(`nakavid:type-a:${file.name}:${file.size}`, uploadUrl);
+        }
+
+        uploadStatus.hidden = false;
+        uploadProgress.max = file.size;
+
+        let offset = await getUploadOffset(uploadUrl);
+        uploadProgress.value = offset;
+        uploadStatusText.textContent = `Uploaded ${offset} of ${file.size} bytes`;
+
+        while (offset < file.size) {
+          offset = await uploadChunk(uploadUrl, file, offset);
+          uploadProgress.value = offset;
+          uploadStatusText.textContent = `Uploaded ${offset} of ${file.size} bytes`;
+        }
+
+        localStorage.removeItem(`nakavid:type-a:${file.name}:${file.size}`);
+        showMessage(`Uploaded ${file.name} to the library.`);
+        uploadStatusText.textContent = "Upload complete.";
+        ingestForm.reset();
+        showSelectedFile(null);
+      }
+
+      ingestForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const file = fileInput.files[0];
+        if (!file) {
+          showMessage("Choose a video file before uploading.", true);
+          return;
+        }
+
+        uploadButton.disabled = true;
+        try {
+          await uploadFile(file, {
+            className: document.getElementById("class-name").value,
+            theme: document.getElementById("theme").value,
+            recordedAt: document.getElementById("recorded-at").value,
+          });
+        } catch (error) {
+          showMessage(error.message || "Upload failed.", true);
+        } finally {
+          uploadButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
