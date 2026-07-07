@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.urls import include, path
 
-from apps.library.views import type_b_ingest
+from apps.library.views import clip_stream, clips_browser, type_b_ingest
 
 
 def healthcheck(_request):
@@ -20,5 +20,7 @@ urlpatterns = [
     path("accounts/", include("django.contrib.auth.urls")),
     path("healthz/", healthcheck, name="healthcheck"),
     path("session/", session_info, name="session-info"),
+    path("clips/", clips_browser, name="clips-browser"),
+    path("clips/<int:clip_id>/stream/", clip_stream, name="clip-stream"),
     path("ingest/type-b/", type_b_ingest, name="type-b-ingest"),
 ]

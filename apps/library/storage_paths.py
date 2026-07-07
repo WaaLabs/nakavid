@@ -41,6 +41,16 @@ def to_absolute_storage_path(_storage_root, relative_path: str) -> str:
     return f"/nakavid/{relative_path.lstrip('/')}"
 
 
+def to_accel_redirect_path(absolute_storage_path: str) -> str:
+    """Path for Caddy X-Accel-Redirect (relative to /srv/nakavid root)."""
+    normalized = absolute_storage_path.strip()
+    if normalized.startswith("/nakavid/"):
+        return normalized[len("/nakavid") :]
+    if normalized.startswith("/"):
+        return normalized
+    return f"/{normalized}"
+
+
 @dataclass(frozen=True)
 class OriginalsPathMetadata:
     recorded_on: date
