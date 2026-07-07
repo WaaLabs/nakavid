@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Clips Browser — NakaVid</title>
+    <title>Source Videos — NakaVid</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -35,18 +35,18 @@
         color: #b91c1c;
         margin-bottom: 1rem;
       }
-      .clip-grid {
+      .video-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
         gap: 1.5rem;
       }
-      .clip-card {
+      .video-card {
         border: 1px solid #ddd;
         border-radius: 0.5rem;
         overflow: hidden;
         background: #fafafa;
       }
-      .clip-thumb {
+      .video-thumb {
         aspect-ratio: 16 / 9;
         background: #111827;
         color: #e5e7eb;
@@ -55,20 +55,17 @@
         justify-content: center;
         font-size: 0.875rem;
       }
-      .clip-meta {
+      .video-meta {
         padding: 0.75rem 1rem 1rem;
       }
-      .clip-meta h2 {
+      .video-meta h2 {
         font-size: 1rem;
         margin: 0 0 0.5rem;
       }
-      .clip-meta p {
+      .video-meta p {
         margin: 0.25rem 0;
         font-size: 0.875rem;
         color: #374151;
-      }
-      .score {
-        font-weight: 700;
       }
       video {
         width: 100%;
@@ -88,8 +85,8 @@
       <a href="{% url 'type-b-ingest' %}">Type B ingest</a>
     </nav>
 
-    <h1>Clips Browser</h1>
-    <p>Browse highlight clips. Playback is auth-gated via the Caddy stream handoff.</p>
+    <h1>Source Videos</h1>
+    <p>Browse Type A long recordings. Playback is auth-gated via the Caddy stream handoff.</p>
 
     <form method="get" class="filters">
       <div class="field">
@@ -100,41 +97,33 @@
         <label for="id_recorded_date">Date</label>
         {{ form.recorded_date }}
       </div>
-      <div class="field">
-        <label for="id_min_score">Min score</label>
-        {{ form.min_score }}
-      </div>
       <button type="submit">Filter</button>
-      <a href="{% url 'clips-browser' %}">Clear</a>
+      <a href="{% url 'source-videos' %}">Clear</a>
     </form>
 
     {% if form.errors %}
     <div class="errors">{{ form.errors }}</div>
     {% endif %}
 
-    {% if clips %}
-    <div class="clip-grid">
-      {% for clip in clips %}
-      <article class="clip-card">
-        <div class="clip-thumb">
-          {% if clip.thumbnail_path %}
-          <img src="{{ clip.thumbnail_path }}" alt="" style="width: 100%; height: 100%; object-fit: cover;" />
-          {% else %}
-          No thumbnail
+    {% if video_rows %}
+    <div class="video-grid">
+      {% for row in video_rows %}
+      <article class="video-card">
+        <div class="video-thumb">Type A recording</div>
+        <div class="video-meta">
+          <h2>{{ row.video.title }}</h2>
+          <p>Class: {{ row.video.class_name }} · Theme: {{ row.video.theme }}</p>
+          <p>Date: {{ row.video.recorded_at|date:"Y-m-d" }}</p>
+          {% if row.duration_label %}
+          <p>Duration: {{ row.duration_label }}</p>
           {% endif %}
-        </div>
-        <div class="clip-meta">
-          <h2>{{ clip.video.title }}</h2>
-          <p>Class: {{ clip.video.class_name }} · Theme: {{ clip.video.theme }}</p>
-          <p>Date: {{ clip.video.recorded_at|date:"Y-m-d" }}</p>
-          <p class="score">Highlight score: {{ clip.highlight_score }}</p>
-          <video controls preload="metadata" src="{% url 'clip-stream' clip.id %}"></video>
+          <video controls preload="metadata" src="{% url 'video-stream' row.video.id %}"></video>
         </div>
       </article>
       {% endfor %}
     </div>
     {% else %}
-    <p class="empty">No clips match the current filters.</p>
+    <p class="empty">No source videos match the current filters.</p>
     {% endif %}
   </body>
 </html>

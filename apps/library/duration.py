@@ -30,3 +30,13 @@ def probe_duration_seconds(file_path: Path) -> int:
     duration = Decimal(str(payload["format"]["duration"]))
     seconds = int(duration.to_integral_value(rounding=ROUND_HALF_UP))
     return max(seconds, 1)
+
+
+def format_duration_seconds(seconds: int) -> str:
+    if seconds <= 0:
+        return ""
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
