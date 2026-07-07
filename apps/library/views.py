@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, time
 from decimal import Decimal
 from pathlib import Path
@@ -8,13 +9,25 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods
 
 from apps.library.duration import probe_duration_seconds
-from apps.library.forms import ClipsBrowserFilterForm, TypeBIngestForm
+from apps.library.forms import ClipsBrowserFilterForm, TypeAIngestMetadataForm, TypeBIngestForm
 from apps.library.models import Clip, Video
+from apps.library.resumable_upload import (
+    TUS_RESUMABLE_HEADER,
+    TUS_VERSION,
+    ResumableUploadError,
+    append_chunk,
+    create_upload,
+    current_offset,
+    finalize_upload,
+    load_metadata,
+)
 from apps.library.storage_paths import (
     build_originals_relative_path,
     to_absolute_storage_path,
@@ -27,6 +40,138 @@ def _write_uploaded_file(*, destination: Path, uploaded_file) -> None:
     with destination.open("wb") as handle:
         for chunk in uploaded_file.chunks():
             handle.write(chunk)
+
+
+def _storage_root() -> Path:
+    return Path(settings.NAKAVID_STORAGE_ROOT)
+
+
+def _tus_response(*, status: int = 204, upload_offset: int | None = None) -> HttpResponse:
+    response = HttpResponse(status=status)
+    response["Tus-Resumable"] = TUS_RESUMABLE_HEADER
+    response["Tus-Version"] = TUS_VERSION
+    if upload_offset is not None:
+        response["Upload-Offset"] = str(upload_offset)
+    return response
+
+
+def _tus_error(message: str, *, status_code: int = 400) -> JsonResponse:
+    return JsonResponse({"error": message}, status=status_code)
+
+
+def _require_tus_resumable(request) -> HttpResponse | None:
+    if request.headers.get("Tus-Resumable") != TUS_RESUMABLE_HEADER:
+        return _tus_error("Missing or unsupported Tus-Resumable header.", status_code=412)
+    return None
+
+
+@login_required
+def type_a_ingest(request):
+    return render(request, "library/type_a_ingest.html")
+
+
+@login_required
+@require_http_methods(["POST", "OPTIONS"])
+def type_a_upload_create(request):
+    if request.method == "OPTIONS":
+        response = HttpResponse(status=204)
+        response["Tus-Resumable"] = TUS_RESUMABLE_HEADER
+        response["Tus-Version"] = TUS_VERSION
+        response["Tus-Extension"] = "creation"
+        return response
+
+    unsupported = _require_tus_resumable(request)
+    if unsupported is not None:
+        return unsupported
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return _tus_error("Request body must be JSON.")
+
+    form = TypeAIngestMetadataForm(payload)
+    if not form.is_valid():
+        return JsonResponse({"errors": form.errors}, status=400)
+
+    metadata = create_upload(
+        storage_root=_storage_root(),
+        user_id=request.user.id,
+        class_name=form.cleaned_data["class_name"],
+        theme=form.cleaned_data["theme"],
+        recorded_at=form.cleaned_data["recorded_at"],
+        filename=form.cleaned_data["filename"],
+        upload_length=form.cleaned_data["upload_length"],
+    )
+    upload_url = request.build_absolute_uri(
+        reverse("type-a-upload-detail", kwargs={"upload_id": metadata.upload_id})
+    )
+    response = HttpResponse(status=201)
+    response["Location"] = upload_url
+    response["Tus-Resumable"] = TUS_RESUMABLE_HEADER
+    response["Tus-Version"] = TUS_VERSION
+    return response
+
+
+@login_required
+@require_http_methods(["HEAD", "PATCH", "OPTIONS"])
+def type_a_upload_detail(request, upload_id: str):
+    if request.method == "OPTIONS":
+        response = HttpResponse(status=204)
+        response["Tus-Resumable"] = TUS_RESUMABLE_HEADER
+        response["Tus-Version"] = TUS_VERSION
+        return response
+
+    unsupported = _require_tus_resumable(request)
+    if unsupported is not None:
+        return unsupported
+
+    storage_root = _storage_root()
+    try:
+        if request.method == "HEAD":
+            offset = current_offset(storage_root, upload_id)
+            return _tus_response(status=200, upload_offset=offset)
+
+        offset_header = request.headers.get("Upload-Offset")
+        if offset_header is None:
+            return _tus_error("Upload-Offset header is required.")
+        offset = int(offset_header)
+        new_offset = append_chunk(
+            storage_root=storage_root,
+            upload_id=upload_id,
+            user_id=request.user.id,
+            offset=offset,
+            chunk=request.body,
+        )
+        upload_metadata = load_metadata(storage_root, upload_id)
+        if new_offset < upload_metadata.upload_length:
+            return _tus_response(upload_offset=new_offset)
+
+        destination, source_path = finalize_upload(
+            storage_root=storage_root,
+            upload_id=upload_id,
+            user_id=request.user.id,
+        )
+        duration_seconds = probe_duration_seconds(destination)
+        title = Path(destination.name).stem
+        recorded_at = timezone.make_aware(datetime.combine(upload_metadata.recorded_on, time.min))
+        with transaction.atomic():
+            Video.objects.create(
+                title=title,
+                source_path=source_path,
+                video_type=Video.VideoType.TYPE_A,
+                orientation=Video.Orientation.LANDSCAPE,
+                class_name=upload_metadata.class_name,
+                theme=upload_metadata.theme,
+                recorded_at=recorded_at,
+                duration_seconds=duration_seconds,
+                is_private=True,
+                created_by=request.user,
+            )
+        return _tus_response(status=201, upload_offset=new_offset)
+    except ResumableUploadError as exc:
+        return _tus_error(str(exc), status_code=exc.status_code)
+    except ValueError:
+        return _tus_error("Upload-Offset must be an integer.")
 
 
 @login_required
