@@ -1,0 +1,34 @@
+[project]
+name = "nakavid"
+version = "0.1.0"
+description = "NakaVid Django bootstrap"
+requires-python = ">=3.12"
+dependencies = [
+  "django>=5.1",
+  "psycopg[binary]>=3.2",
+]
+
+[dependency-groups]
+dev = [
+  "black>=24.10.0",
+  "pytest>=8.3.0",
+  "pytest-cov>=6.0.0",
+  "pytest-django>=4.9.0",
+  "ruff>=0.8.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = "--cov=. --cov-report=term-missing --cov-fail-under=70"
