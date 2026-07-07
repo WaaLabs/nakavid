@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clips Browser — NakaVid</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 72rem;
+        padding: 0 1rem;
+      }
+      nav {
+        margin-bottom: 1.5rem;
+      }
+      nav a {
+        margin-right: 1rem;
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-end;
+        margin-bottom: 2rem;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 0.5rem;
+      }
+      .field label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .errors {
+        color: #b91c1c;
+        margin-bottom: 1rem;
+      }
+      .clip-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+        gap: 1.5rem;
+      }
+      .clip-card {
+        border: 1px solid #ddd;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        background: #fafafa;
+      }
+      .clip-thumb {
+        aspect-ratio: 16 / 9;
+        background: #111827;
+        color: #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+      }
+      .clip-meta {
+        padding: 0.75rem 1rem 1rem;
+      }
+      .clip-meta h2 {
+        font-size: 1rem;
+        margin: 0 0 0.5rem;
+      }
+      .clip-meta p {
+        margin: 0.25rem 0;
+        font-size: 0.875rem;
+        color: #374151;
+      }
+      .score {
+        font-weight: 700;
+      }
+      video {
+        width: 100%;
+        display: block;
+        background: #000;
+      }
+      .empty {
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="{% url 'clips-browser' %}">Clips Browser</a>
+      <a href="{% url 'type-b-ingest' %}">Type B ingest</a>
+    </nav>
+
+    <h1>Clips Browser</h1>
+    <p>Browse highlight clips. Playback is auth-gated via the Caddy stream handoff.</p>
+
+    <form method="get" class="filters">
+      <div class="field">
+        <label for="id_class_name">Class</label>
+        {{ form.class_name }}
+      </div>
+      <div class="field">
+        <label for="id_recorded_date">Date</label>
+        {{ form.recorded_date }}
+      </div>
+      <div class="field">
+        <label for="id_min_score">Min score</label>
+        {{ form.min_score }}
+      </div>
+      <button type="submit">Filter</button>
+      <a href="{% url 'clips-browser' %}">Clear</a>
+    </form>
+
+    {% if form.errors %}
+    <div class="errors">{{ form.errors }}</div>
+    {% endif %}
+
+    {% if clips %}
+    <div class="clip-grid">
+      {% for clip in clips %}
+      <article class="clip-card">
+        <div class="clip-thumb">
+          {% if clip.thumbnail_path %}
+          <img src="{{ clip.thumbnail_path }}" alt="" style="width: 100%; height: 100%; object-fit: cover;" />
+          {% else %}
+          No thumbnail
+          {% endif %}
+        </div>
+        <div class="clip-meta">
+          <h2>{{ clip.video.title }}</h2>
+          <p>Class: {{ clip.video.class_name }} · Theme: {{ clip.video.theme }}</p>
+          <p>Date: {{ clip.video.recorded_at|date:"Y-m-d" }}</p>
+          <p class="score">Highlight score: {{ clip.highlight_score }}</p>
+          <video controls preload="metadata" src="{% url 'clip-stream' clip.id %}"></video>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">No clips match the current filters.</p>
+    {% endif %}
+  </body>
+</html>

@@ -20,3 +20,14 @@ class TypeBIngestForm(forms.Form):
     def cleaned_filename(self) -> str:
         uploaded = self.cleaned_data["video_file"]
         return get_valid_filename(uploaded.name)
+
+
+class ClipsBrowserFilterForm(forms.Form):
+    class_name = forms.CharField(max_length=120, required=False, label="Class")
+    recorded_date = forms.DateField(required=False, label="Date")
+    min_score = forms.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=100,
+        label="Min highlight score",
+    )
