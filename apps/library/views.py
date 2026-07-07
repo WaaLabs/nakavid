@@ -15,8 +15,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from apps.library.duration import probe_duration_seconds
-from apps.library.forms import ClipsBrowserFilterForm, TypeAIngestMetadataForm, TypeBIngestForm
+from apps.library.duration import format_duration_seconds, probe_duration_seconds
+from apps.library.forms import (
+    ClipsBrowserFilterForm,
+    SourceVideosFilterForm,
+    TypeAIngestMetadataForm,
+    TypeBIngestForm,
+)
 from apps.library.models import Clip, Video
 from apps.library.resumable_upload import (
     TUS_RESUMABLE_HEADER,
@@ -226,6 +231,55 @@ def type_b_ingest(request):
         form = TypeBIngestForm()
 
     return render(request, "library/type_b_ingest.html", {"form": form})
+
+
+def _filtered_source_videos(*, form: SourceVideosFilterForm):
+    videos = Video.objects.filter(video_type=Video.VideoType.TYPE_A).order_by(
+        "-recorded_at",
+        "-id",
+    )
+    class_name = form.cleaned_data.get("class_name")
+    recorded_date = form.cleaned_data.get("recorded_date")
+
+    if class_name:
+        videos = videos.filter(class_name__iexact=class_name)
+    if recorded_date:
+        videos = videos.filter(recorded_at__date=recorded_date)
+    return videos
+
+
+@login_required
+def source_videos(request):
+    form = SourceVideosFilterForm(request.GET)
+    videos = _filtered_source_videos(form=form) if form.is_valid() else Video.objects.none()
+    video_rows = [
+        {
+            "video": video,
+            "duration_label": format_duration_seconds(video.duration_seconds),
+        }
+        for video in videos
+    ]
+
+    return render(
+        request,
+        "library/source_videos.html",
+        {
+            "form": form,
+            "video_rows": video_rows,
+        },
+    )
+
+
+@login_required
+def video_stream(request, video_id: int):
+    video = get_object_or_404(
+        Video.objects.filter(video_type=Video.VideoType.TYPE_A),
+        pk=video_id,
+    )
+    response = HttpResponse()
+    response["X-Accel-Redirect"] = to_accel_redirect_path(video.source_path)
+    response["Content-Type"] = ""
+    return response
 
 
 def _filtered_clips(*, form: ClipsBrowserFilterForm):

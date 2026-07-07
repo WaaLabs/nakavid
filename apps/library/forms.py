@@ -36,6 +36,11 @@ class TypeBIngestForm(forms.Form):
         return get_valid_filename(uploaded.name)
 
 
+class SourceVideosFilterForm(forms.Form):
+    class_name = forms.CharField(max_length=120, required=False, label="Class")
+    recorded_date = forms.DateField(required=False, label="Date")
+
+
 class ClipsBrowserFilterForm(forms.Form):
     class_name = forms.CharField(max_length=120, required=False, label="Class")
     recorded_date = forms.DateField(required=False, label="Date")
