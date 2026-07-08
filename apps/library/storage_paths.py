@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pathlib import PurePosixPath
 
 ORIGINALS_PREFIX = "originals"
+HIGHLIGHTS_PREFIX = "highlights"
 _PATH_SEGMENT_RE = re.compile(
     r"^originals/(?P<year>\d{4})/(?P<month>\d{2})/"
     r"(?P<date>\d{8})_(?P<class_name>[^/]+)_(?P<theme>[^/]+)/(?P<filename>[^/]+)$"
@@ -35,6 +36,29 @@ def build_originals_relative_path(
         / f"{date_token}_{class_slug}_{theme_slug}"
         / filename
     )
+
+
+def build_highlight_relative_paths(
+    *,
+    recorded_at: date | datetime,
+    class_name: str,
+    theme: str,
+    source_stem: str,
+    clip_index: int,
+) -> tuple[str, str]:
+    if isinstance(recorded_at, datetime):
+        recorded_at = recorded_at.date()
+    date_token = recorded_at.strftime("%Y%m%d")
+    class_slug = slug_segment(class_name)
+    theme_slug = slug_segment(theme)
+    clip_name = f"{source_stem}__clip_{clip_index:03d}"
+    base = (
+        PurePosixPath(HIGHLIGHTS_PREFIX)
+        / str(recorded_at.year)
+        / f"{recorded_at.month:02d}"
+        / f"{date_token}_{class_slug}_{theme_slug}"
+    )
+    return str(base / f"{clip_name}.mp4"), str(base / f"{clip_name}.jpg")
 
 
 def to_absolute_storage_path(_storage_root, relative_path: str) -> str:

@@ -201,6 +201,9 @@ def test_handle_score_persists_energy_curve(storage_root, user):
     assert clip.highlight_score == 80
     assert clip.start_seconds == Decimal("0.000")
     assert clip.end_seconds == Decimal("12")
+    extraction_job = Job.objects.filter(video=video, job_type=Job.JobType.CLIP_EXTRACTION).first()
+    assert extraction_job is not None
+    assert extraction_job.scoring_params_id == params.pk
 
 
 @pytest.mark.django_db
