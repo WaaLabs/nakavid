@@ -18,3 +18,11 @@ def enqueue_score_job(*, video: Video) -> Job:
         job_type=Job.JobType.SCORE,
         scoring_params=params,
     )
+
+
+def enqueue_clip_extraction_job(*, video: Video, scoring_params_id: int | None) -> Job:
+    return Job.objects.create(
+        video=video,
+        job_type=Job.JobType.CLIP_EXTRACTION,
+        scoring_params_id=scoring_params_id,
+    )
