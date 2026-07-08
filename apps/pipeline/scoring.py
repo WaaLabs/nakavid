@@ -7,7 +7,7 @@ import cv2
 import librosa
 import numpy as np
 
-from apps.pipeline.models import ScoringParams
+from apps.pipeline.models import Job, ScoringParams
 
 
 class ScoringError(Exception):
@@ -45,12 +45,15 @@ def build_windows(
     if duration_seconds <= 0:
         return []
 
+    window_size_seconds = max(window_size_seconds, 0.001)
+    step_seconds = max(step_seconds, 0.001)
+
     windows: list[tuple[float, float]] = []
     start = 0.0
     while start < duration_seconds:
         end = min(start + window_size_seconds, duration_seconds)
         if end > start:
-            windows.append((start, end))
+            windows.append((round(start, 3), round(end, 3)))
         if end >= duration_seconds:
             break
         start += step_seconds
@@ -64,12 +67,18 @@ def aggregate_window_score(*, signals: WindowSignals, params: ScoringParams) -> 
     motion_component = min(max(signals.motion_energy, 0.0), 1.0)
     audio_component = min(max(signals.audio_rms * 10.0, 0.0), 1.0)
 
+    total_weight = float(
+        params.face_weight + params.smile_weight + params.motion_weight + params.audio_weight
+    )
+    if total_weight <= 0:
+        raise ScoringError("ScoringParams weights must sum to a positive value")
+
     weighted = (
         face_component * float(params.face_weight)
         + smile_component * float(params.smile_weight)
         + motion_component * float(params.motion_weight)
         + audio_component * float(params.audio_weight)
-    )
+    ) / total_weight
 
     score = weighted * 100.0
     if signals.audio_rms < float(params.silence_rms_threshold):
@@ -78,10 +87,9 @@ def aggregate_window_score(*, signals: WindowSignals, params: ScoringParams) -> 
     return max(0.0, min(score, 100.0))
 
 
-def smooth_scores(scores: list[float], *, window_size: int = 3) -> list[float]:
+def smooth_scores(scores: list[float], *, window_size: int) -> list[float]:
     if not scores:
         return []
-
     if window_size <= 1:
         return list(scores)
 
@@ -91,7 +99,6 @@ def smooth_scores(scores: list[float], *, window_size: int = 3) -> list[float]:
         start = max(0, index - half)
         end = min(len(scores), index + half + 1)
         smoothed.append(sum(scores[start:end]) / (end - start))
-
     return smoothed
 
 
@@ -134,7 +141,6 @@ def _sample_frames(
             frames.append(gray)
             if len(frames) >= max_frames:
                 break
-
         return frames
     finally:
         capture.release()
@@ -182,10 +188,10 @@ def extract_window_signals(
             offset=start_seconds,
             duration=max(end_seconds - start_seconds, 0.001),
         )
-        audio_rms = float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
     except Exception as exc:
         raise ScoringError(f"Unable to load audio for scoring: {exc}") from exc
 
+    audio_rms = float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
     return WindowSignals(
         face_count=face_total / frame_count,
         smile_ratio=smile_total / frame_count,
@@ -219,7 +225,10 @@ def score_windows(
             )
         )
 
-    smoothed = smooth_scores([window.score for window in raw_scores])
+    smoothed = smooth_scores(
+        [window.score for window in raw_scores],
+        window_size=max(1, int(params.smoothing_window_count)),
+    )
     energy_curve: list[dict] = []
     for window, score in zip(raw_scores, smoothed, strict=True):
         energy_curve.append(
@@ -238,7 +247,6 @@ def score_windows(
 
     highlight_score = int(round(max(smoothed))) if smoothed else 0
     highlight_score = max(0, min(highlight_score, 100))
-
     return SegmentScoringResult(
         energy_curve=energy_curve,
         highlight_score=highlight_score,
@@ -275,7 +283,7 @@ def get_active_scoring_params() -> ScoringParams:
     return params
 
 
-def scoring_params_from_job(job) -> ScoringParams:
+def scoring_params_from_job(job: Job) -> ScoringParams:
     if job.scoring_params_id is not None:
         return job.scoring_params
     return get_active_scoring_params()

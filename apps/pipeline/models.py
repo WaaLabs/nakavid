@@ -12,6 +12,7 @@ class ScoringParams(models.Model):
     silence_rms_threshold = models.DecimalField(max_digits=6, decimal_places=4, default=0.0100)
     window_size_seconds = models.PositiveSmallIntegerField(default=4)
     step_seconds = models.PositiveSmallIntegerField(default=2)
+    smoothing_window_count = models.PositiveSmallIntegerField(default=3)
     min_clip_length_seconds = models.PositiveSmallIntegerField(default=4)
     min_gap_seconds = models.PositiveSmallIntegerField(default=2)
     peak_count = models.PositiveSmallIntegerField(default=8)
