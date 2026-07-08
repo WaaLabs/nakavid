@@ -11,6 +11,7 @@ from apps.library.models import Video
 from apps.pipeline.handlers import dispatch_job
 from apps.pipeline.job_queue import claim_next_job, mark_job_done, mark_job_error
 from apps.pipeline.models import Job
+from apps.pipeline.scoring import SegmentScoringResult
 from apps.pipeline.worker import process_job
 
 User = get_user_model()
@@ -125,9 +126,13 @@ def test_dispatch_job_routes_all_job_types(video):
         height=1080,
     )
     with patch("apps.pipeline.handlers.run_ffprobe", return_value=probe_result):
-        for job_type in Job.JobType.values:
-            job = Job.objects.create(video=video, job_type=job_type, status=Job.Status.PROCESSING)
-            dispatch_job(job)
+        scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
+        with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
+            for job_type in Job.JobType.values:
+                job = Job.objects.create(
+                    video=video, job_type=job_type, status=Job.Status.PROCESSING
+                )
+                dispatch_job(job)
 
 
 @pytest.mark.django_db(transaction=True)

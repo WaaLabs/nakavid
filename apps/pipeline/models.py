@@ -8,6 +8,8 @@ class ScoringParams(models.Model):
     smile_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
     motion_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
     audio_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
+    silence_penalty_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.100)
+    silence_rms_threshold = models.DecimalField(max_digits=6, decimal_places=4, default=0.0100)
     window_size_seconds = models.PositiveSmallIntegerField(default=4)
     step_seconds = models.PositiveSmallIntegerField(default=2)
     min_clip_length_seconds = models.PositiveSmallIntegerField(default=4)

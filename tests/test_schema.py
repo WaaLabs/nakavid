@@ -111,6 +111,8 @@ def test_default_scoring_params_seeded():
     assert params.smile_weight == pytest.approx(0.250)
     assert params.motion_weight == pytest.approx(0.250)
     assert params.audio_weight == pytest.approx(0.250)
+    assert float(params.silence_penalty_weight) == pytest.approx(0.100)
+    assert float(params.silence_rms_threshold) == pytest.approx(0.0100)
     assert params.window_size_seconds == 4
     assert params.step_seconds == 2
     assert params.min_clip_length_seconds == 4
