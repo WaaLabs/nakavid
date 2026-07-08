@@ -28,6 +28,7 @@ class Job(models.Model):
         ERROR = "error", "Error"
 
     class JobType(models.TextChoices):
+        PROBE = "probe", "Probe"
         INGEST = "ingest", "Ingest"
         CLIP_EXTRACTION = "clip_extraction", "Clip Extraction"
         SCORE = "score", "Score"

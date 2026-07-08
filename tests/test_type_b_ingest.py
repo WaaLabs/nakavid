@@ -14,6 +14,7 @@ from apps.library.storage_paths import (
     parse_originals_relative_path,
     to_absolute_storage_path,
 )
+from apps.pipeline.models import Job
 
 User = get_user_model()
 
@@ -103,8 +104,11 @@ def test_type_b_ingest_upload_happy_path(authenticated_client, storage_root):
     assert clip.video == video
     assert clip.storage_path == absolute_path
     assert clip.start_seconds == Decimal("0.000")
-    assert clip.end_seconds == Decimal(video.duration_seconds)
+    assert clip.end_seconds == Decimal("1")
     assert clip.created_by == user
+
+    probe_job = Job.objects.get(video=video, job_type=Job.JobType.PROBE)
+    assert probe_job.status == Job.Status.PENDING
 
     metadata = parse_originals_relative_path(relative_path)
     assert metadata.filename == "crowd_reaction.mp4"

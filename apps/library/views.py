@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from apps.library.duration import format_duration_seconds, probe_duration_seconds
+from apps.library.duration import format_duration_seconds
 from apps.library.forms import (
     ClipsBrowserFilterForm,
     SourceVideosFilterForm,
@@ -38,6 +38,7 @@ from apps.library.storage_paths import (
     to_absolute_storage_path,
     to_accel_redirect_path,
 )
+from apps.pipeline.enqueue import STUB_DURATION_SECONDS, enqueue_probe_job
 
 
 def _write_uploaded_file(*, destination: Path, uploaded_file) -> None:
@@ -156,11 +157,11 @@ def type_a_upload_detail(request, upload_id: str):
             upload_id=upload_id,
             user_id=request.user.id,
         )
-        duration_seconds = probe_duration_seconds(destination)
+        duration_seconds = STUB_DURATION_SECONDS
         title = Path(destination.name).stem
         recorded_at = timezone.make_aware(datetime.combine(upload_metadata.recorded_on, time.min))
         with transaction.atomic():
-            Video.objects.create(
+            video = Video.objects.create(
                 title=title,
                 source_path=source_path,
                 video_type=Video.VideoType.TYPE_A,
@@ -172,6 +173,7 @@ def type_a_upload_detail(request, upload_id: str):
                 is_private=True,
                 created_by=request.user,
             )
+            enqueue_probe_job(video=video)
         return _tus_response(status=201, upload_offset=new_offset)
     except ResumableUploadError as exc:
         return _tus_error(str(exc), status_code=exc.status_code)
@@ -198,7 +200,7 @@ def type_b_ingest(request):
                 destination=destination,
                 uploaded_file=form.cleaned_data["video_file"],
             )
-            duration_seconds = probe_duration_seconds(destination)
+            duration_seconds = STUB_DURATION_SECONDS
             title = Path(form.cleaned_filename()).stem
             recorded_at = timezone.make_aware(
                 datetime.combine(form.cleaned_data["recorded_at"], time.min)
@@ -224,6 +226,7 @@ def type_b_ingest(request):
                     end_seconds=Decimal(duration_seconds),
                     created_by=request.user,
                 )
+                enqueue_probe_job(video=video)
 
             messages.success(request, f"Uploaded {title} to the library.")
             return redirect("type-b-ingest")

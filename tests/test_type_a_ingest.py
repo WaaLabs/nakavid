@@ -22,6 +22,7 @@ from apps.library.storage_paths import (
     build_originals_relative_path,
     to_absolute_storage_path,
 )
+from apps.pipeline.models import Job
 
 User = get_user_model()
 
@@ -143,12 +144,8 @@ def test_type_a_ingest_requires_login(client):
 
 
 @pytest.mark.django_db
-def test_type_a_upload_api_happy_path(authenticated_client, storage_root, monkeypatch):
+def test_type_a_upload_api_happy_path(authenticated_client, storage_root):
     client, user = authenticated_client
-    monkeypatch.setattr(
-        "apps.library.views.probe_duration_seconds",
-        lambda _path: 3600,
-    )
 
     payload = b"fake-type-a-video-bytes-for-resume-test"
     create_response = client.post(
@@ -221,18 +218,17 @@ def test_type_a_upload_api_happy_path(authenticated_client, storage_root, monkey
     assert video.orientation == Video.Orientation.LANDSCAPE
     assert video.class_name == "A"
     assert video.theme == "Animals"
-    assert video.duration_seconds == 3600
+    assert video.duration_seconds == 1
     assert video.created_by == user
     assert Clip.objects.count() == 0
 
+    probe_job = Job.objects.get(video=video, job_type=Job.JobType.PROBE)
+    assert probe_job.status == Job.Status.PENDING
+
 
 @pytest.mark.django_db
-def test_type_a_upload_resume_after_interrupt(authenticated_client, storage_root, monkeypatch):
+def test_type_a_upload_resume_after_interrupt(authenticated_client, storage_root):
     client, user = authenticated_client
-    monkeypatch.setattr(
-        "apps.library.views.probe_duration_seconds",
-        lambda _path: 5400,
-    )
 
     payload = b"0123456789abcdef" * 4
     create_response = client.post(

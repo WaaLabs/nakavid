@@ -117,9 +117,19 @@ def test_process_job_captures_handler_errors_on_stderr(pending_job):
 
 @pytest.mark.django_db
 def test_dispatch_job_routes_all_job_types(video):
-    for job_type in Job.JobType.values:
-        job = Job.objects.create(video=video, job_type=job_type, status=Job.Status.PROCESSING)
-        dispatch_job(job)
+    probe_result = __import__(
+        "apps.pipeline.probe", fromlist=["ProbeResult"]
+    ).ProbeResult(
+        duration_seconds=120,
+        orientation=Video.Orientation.LANDSCAPE,
+        video_codec="h264",
+        width=1920,
+        height=1080,
+    )
+    with patch("apps.pipeline.handlers.run_ffprobe", return_value=probe_result):
+        for job_type in Job.JobType.values:
+            job = Job.objects.create(video=video, job_type=job_type, status=Job.Status.PROCESSING)
+            dispatch_job(job)
 
 
 @pytest.mark.django_db(transaction=True)
