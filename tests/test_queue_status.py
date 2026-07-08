@@ -36,7 +36,10 @@ def sample_video(db, coach_user, storage_root):
     recorded_at = timezone.make_aware(datetime(2026, 7, 1, 9, 0))
     return Video.objects.create(
         title="lesson",
-        source_path=to_absolute_storage_path(storage_root, "originals/2026/07/20260701_a_animals/lesson.mp4"),
+        source_path=to_absolute_storage_path(
+            storage_root,
+            "originals/2026/07/20260701_a_animals/lesson.mp4",
+        ),
         video_type=Video.VideoType.TYPE_A,
         orientation=Video.Orientation.LANDSCAPE,
         class_name="A",
@@ -59,10 +62,26 @@ def test_queue_status_requires_login(client):
 def test_queue_status_shows_totals_and_recent_jobs(authenticated_client, sample_video):
     client, _user = authenticated_client
 
-    Job.objects.create(video=sample_video, job_type=Job.JobType.PROBE, status=Job.Status.PENDING)
-    Job.objects.create(video=sample_video, job_type=Job.JobType.SCORE, status=Job.Status.PROCESSING)
-    Job.objects.create(video=sample_video, job_type=Job.JobType.CLIP_EXTRACTION, status=Job.Status.DONE)
-    Job.objects.create(video=sample_video, job_type=Job.JobType.INGEST, status=Job.Status.ERROR)
+    Job.objects.create(
+        video=sample_video,
+        job_type=Job.JobType.PROBE,
+        status=Job.Status.PENDING,
+    )
+    Job.objects.create(
+        video=sample_video,
+        job_type=Job.JobType.SCORE,
+        status=Job.Status.PROCESSING,
+    )
+    Job.objects.create(
+        video=sample_video,
+        job_type=Job.JobType.CLIP_EXTRACTION,
+        status=Job.Status.DONE,
+    )
+    Job.objects.create(
+        video=sample_video,
+        job_type=Job.JobType.INGEST,
+        status=Job.Status.ERROR,
+    )
 
     response = client.get(reverse("queue-status"))
 

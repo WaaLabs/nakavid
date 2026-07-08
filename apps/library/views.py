@@ -277,8 +277,7 @@ def source_videos(request):
 @login_required
 def queue_status(request):
     jobs = list(
-        Job.objects.select_related("video", "scoring_params")
-        .order_by("-created_at", "-id")[:50]
+        Job.objects.select_related("video", "scoring_params").order_by("-created_at", "-id")[:50]
     )
     status_counts = {
         status: sum(1 for job in jobs if job.status == status)
