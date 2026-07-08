@@ -78,7 +78,7 @@ def test_select_clip_segments_prefers_non_overlapping_peaks():
 @pytest.mark.django_db
 def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage_root, user):
     video = _create_type_a_video(storage_root=storage_root, user=user)
-    tag = Tag.objects.create(name="warmup")
+    tag = Tag.objects.create(slug="warmup", label="Warmup")
     video.tags.add(tag)
     placeholder = Clip.objects.create(
         video=video,
@@ -116,4 +116,4 @@ def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage
         assert clip.storage_path.endswith(f"__clip_{index:03d}.mp4")
         assert clip.thumbnail_path.endswith(f"__clip_{index:03d}.jpg")
         assert clip.energy_curve
-        assert list(clip.tags.values_list("name", flat=True)) == ["warmup"]
+        assert list(clip.tags.values_list("slug", flat=True)) == ["warmup"]

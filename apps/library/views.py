@@ -19,10 +19,12 @@ from apps.library.duration import format_duration_seconds
 from apps.library.forms import (
     ClipsBrowserFilterForm,
     SourceVideosFilterForm,
+    TagCategoryForm,
+    TagForm,
     TypeAIngestMetadataForm,
     TypeBIngestForm,
 )
-from apps.library.models import Clip, Video
+from apps.library.models import Clip, Tag, TagCategory, Video
 from apps.library.resumable_upload import (
     TUS_RESUMABLE_HEADER,
     TUS_VERSION,
@@ -400,3 +402,71 @@ def clip_stream(request, clip_id: int):
     response["X-Accel-Redirect"] = to_accel_redirect_path(clip.storage_path)
     response["Content-Type"] = ""
     return response
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def tag_manager(request):
+    tag_form = TagForm(prefix="tag")
+    category_form = TagCategoryForm(prefix="category")
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "create_tag":
+            tag_form = TagForm(request.POST, prefix="tag")
+            if tag_form.is_valid():
+                tag = tag_form.save()
+                messages.success(request, f"Created tag “{tag.label}”.")
+                return redirect("tag-manager")
+        elif action == "create_category":
+            category_form = TagCategoryForm(request.POST, prefix="category")
+            if category_form.is_valid():
+                category = category_form.save()
+                messages.success(request, f"Created tag category “{category.name}”.")
+                return redirect("tag-manager")
+
+    tags = Tag.objects.select_related("category").order_by("label", "slug")
+    categories = TagCategory.objects.order_by("name")
+    return render(
+        request,
+        "library/tag_manager.html",
+        {
+            "tag_form": tag_form,
+            "category_form": category_form,
+            "tags": tags,
+            "categories": categories,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def tag_edit(request, tag_id: int):
+    tag = get_object_or_404(Tag.objects.select_related("category"), pk=tag_id)
+    if request.method == "POST":
+        form = TagForm(request.POST, instance=tag)
+        if form.is_valid():
+            updated = form.save()
+            messages.success(request, f"Updated tag “{updated.label}”.")
+            return redirect("tag-manager")
+    else:
+        form = TagForm(instance=tag)
+
+    return render(
+        request,
+        "library/tag_edit.html",
+        {
+            "form": form,
+            "tag": tag,
+        },
+    )
+
+
+@login_required
+@require_POST
+def tag_delete(request, tag_id: int):
+    tag = get_object_or_404(Tag, pk=tag_id)
+    label = tag.label
+    tag.delete()
+    messages.success(request, f"Deleted tag “{label}”.")
+    return redirect("tag-manager")

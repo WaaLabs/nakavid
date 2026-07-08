@@ -1,5 +1,7 @@
 from django import forms
-from django.utils.text import get_valid_filename
+from django.utils.text import get_valid_filename, slugify
+
+from apps.library.models import Tag, TagCategory
 
 
 class TypeAIngestMetadataForm(forms.Form):
@@ -50,3 +52,30 @@ class ClipsBrowserFilterForm(forms.Form):
         max_value=100,
         label="Min highlight score",
     )
+
+
+class TagCategoryForm(forms.ModelForm):
+    class Meta:
+        model = TagCategory
+        fields = ("name", "description")
+
+
+class TagForm(forms.ModelForm):
+    class Meta:
+        model = Tag
+        fields = ("label", "slug", "category")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["slug"].required = False
+        self.fields["category"].required = False
+        self.fields["category"].queryset = TagCategory.objects.order_by("name")
+
+    def clean_slug(self) -> str:
+        slug = (self.cleaned_data.get("slug") or "").strip()
+        if not slug:
+            label = (self.cleaned_data.get("label") or "").strip()
+            slug = slugify(label)
+        if not slug:
+            raise forms.ValidationError("Enter a label so a slug can be generated.")
+        return slug

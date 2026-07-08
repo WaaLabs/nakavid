@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Edit tag — NakaVid</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 36rem;
+        padding: 0 1rem;
+      }
+      nav {
+        margin-bottom: 1.5rem;
+      }
+      nav a {
+        margin-right: 1rem;
+      }
+      .field {
+        margin-bottom: 0.75rem;
+      }
+      .field label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .field input,
+      .field select {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .errors {
+        color: #b91c1c;
+        margin-bottom: 0.75rem;
+      }
+      .actions {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        margin-top: 1rem;
+      }
+      .hint {
+        color: #6b7280;
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="{% url 'tag-manager' %}">← Tag Manager</a>
+    </nav>
+
+    <h1>Edit tag</h1>
+    <p>Update label, slug, or category for “{{ tag.label }}”.</p>
+
+    <form method="post">
+      {% csrf_token %}
+      {% if form.errors %}
+      <div class="errors">{{ form.errors }}</div>
+      {% endif %}
+      <div class="field">
+        <label for="{{ form.label.id_for_label }}">Label</label>
+        {{ form.label }}
+      </div>
+      <div class="field">
+        <label for="{{ form.slug.id_for_label }}">Slug</label>
+        {{ form.slug }}
+        <p class="hint">Leave blank to regenerate from the label.</p>
+      </div>
+      <div class="field">
+        <label for="{{ form.category.id_for_label }}">Category</label>
+        {{ form.category }}
+      </div>
+      <div class="actions">
+        <button type="submit">Save</button>
+        <a href="{% url 'tag-manager' %}">Cancel</a>
+      </div>
+    </form>
+  </body>
+</html>

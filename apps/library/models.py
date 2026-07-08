@@ -40,18 +40,26 @@ class TagCategory(models.Model):
     name = models.CharField(max_length=80, unique=True)
     description = models.CharField(max_length=255, blank=True)
 
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "tag categories"
+
     def __str__(self) -> str:
         return self.name
 
 
 class Tag(models.Model):
-    name = models.CharField(max_length=80, unique=True)
+    slug = models.SlugField(max_length=80, unique=True)
+    label = models.CharField(max_length=80)
     category = models.ForeignKey(
         TagCategory, on_delete=models.PROTECT, related_name="tags", null=True, blank=True
     )
 
+    class Meta:
+        ordering = ["label", "slug"]
+
     def __str__(self) -> str:
-        return self.name
+        return self.label
 
 
 class Clip(models.Model):
