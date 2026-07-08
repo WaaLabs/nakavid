@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bulk Tagging — NakaVid</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 72rem;
+        padding: 0 1rem;
+      }
+      nav {
+        margin-bottom: 1.5rem;
+      }
+      nav a {
+        margin-right: 1rem;
+      }
+      .messages {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 1rem;
+      }
+      .messages li {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        border-radius: 0.375rem;
+        padding: 0.5rem 0.75rem;
+        margin-bottom: 0.5rem;
+      }
+      .errors {
+        color: #b91c1c;
+        margin-bottom: 1rem;
+      }
+      .panels {
+        display: grid;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      @media (min-width: 56rem) {
+        .panels {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+      .panel {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: #fafafa;
+      }
+      .panel h2 {
+        margin-top: 0;
+        font-size: 1.1rem;
+      }
+      .choice-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        max-height: 22rem;
+        overflow: auto;
+      }
+      .choice-list li {
+        margin-bottom: 0.5rem;
+      }
+      .choice-list label {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-start;
+        font-size: 0.9rem;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-end;
+        margin-bottom: 1rem;
+      }
+      .field label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .hint {
+        color: #6b7280;
+        font-size: 0.875rem;
+      }
+      .empty {
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="{% url 'source-videos' %}">Source Videos</a>
+      <a href="{% url 'clips-browser' %}">Clips Browser</a>
+      <a href="{% url 'queue-status' %}">Queue Status</a>
+      <a href="{% url 'tag-manager' %}">Tag Manager</a>
+      <a href="{% url 'bulk-tagging' %}">Bulk Tagging</a>
+      <a href="{% url 'type-a-ingest' %}">Type A ingest</a>
+      <a href="{% url 'type-b-ingest' %}">Type B ingest</a>
+    </nav>
+
+    <h1>Bulk Tagging</h1>
+    <p>
+      Select videos and/or clips, choose tags, then add or remove in one action.
+      Add keeps existing tags.
+    </p>
+
+    {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}
+      <li>{{ message }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if form.non_field_errors %}
+    <div class="errors">{{ form.non_field_errors }}</div>
+    {% endif %}
+    {% if form.errors and not form.non_field_errors %}
+    <div class="errors">{{ form.errors }}</div>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="actions">
+        <div class="field">
+          <label for="{{ form.action.id_for_label }}">Action</label>
+          {{ form.action }}
+        </div>
+        <button type="submit">Apply tags</button>
+      </div>
+      <p class="hint">
+        Add merges tags onto the selection. Remove only clears the chosen tags
+        (other tags stay).
+      </p>
+
+      <div class="panels">
+        <section class="panel">
+          <h2>Videos</h2>
+          {% if form.videos.field.queryset.exists %}
+          <ul class="choice-list">
+            {% for checkbox in form.videos %}
+            <li>{{ checkbox }}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty">No videos yet.</p>
+          {% endif %}
+        </section>
+
+        <section class="panel">
+          <h2>Clips</h2>
+          {% if form.clips.field.queryset.exists %}
+          <ul class="choice-list">
+            {% for checkbox in form.clips %}
+            <li>{{ checkbox }}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty">No clips yet.</p>
+          {% endif %}
+        </section>
+
+        <section class="panel">
+          <h2>Tags</h2>
+          {% if form.tags.field.queryset.exists %}
+          <ul class="choice-list">
+            {% for checkbox in form.tags %}
+            <li>{{ checkbox }}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty">No tags yet. Create some in Tag Manager first.</p>
+          {% endif %}
+        </section>
+      </div>
+    </form>
+  </body>
+</html>

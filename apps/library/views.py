@@ -17,6 +17,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.library.duration import format_duration_seconds
 from apps.library.forms import (
+    BulkTagForm,
     ClipsBrowserFilterForm,
     SourceVideosFilterForm,
     TagCategoryForm,
@@ -470,3 +471,51 @@ def tag_delete(request, tag_id: int):
     tag.delete()
     messages.success(request, f"Deleted tag “{label}”.")
     return redirect("tag-manager")
+
+
+def _bulk_tag_summary(*, video_count: int, clip_count: int, tag_count: int, action: str) -> str:
+    targets: list[str] = []
+    if video_count:
+        targets.append(f"{video_count} video{'s' if video_count != 1 else ''}")
+    if clip_count:
+        targets.append(f"{clip_count} clip{'s' if clip_count != 1 else ''}")
+    target_label = " and ".join(targets)
+    verb = "Added" if action == BulkTagForm.Action.ADD else "Removed"
+    return f"{verb} {tag_count} tag{'s' if tag_count != 1 else ''} on {target_label}."
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def bulk_tagging(request):
+    if request.method == "POST":
+        form = BulkTagForm(request.POST)
+        if form.is_valid():
+            videos = list(form.cleaned_data["videos"])
+            clips = list(form.cleaned_data["clips"])
+            tags = list(form.cleaned_data["tags"])
+            action = form.cleaned_data["action"]
+            with transaction.atomic():
+                for video in videos:
+                    if action == BulkTagForm.Action.ADD:
+                        video.tags.add(*tags)
+                    else:
+                        video.tags.remove(*tags)
+                for clip in clips:
+                    if action == BulkTagForm.Action.ADD:
+                        clip.tags.add(*tags)
+                    else:
+                        clip.tags.remove(*tags)
+            messages.success(
+                request,
+                _bulk_tag_summary(
+                    video_count=len(videos),
+                    clip_count=len(clips),
+                    tag_count=len(tags),
+                    action=action,
+                ),
+            )
+            return redirect("bulk-tagging")
+    else:
+        form = BulkTagForm()
+
+    return render(request, "library/bulk_tagging.html", {"form": form})

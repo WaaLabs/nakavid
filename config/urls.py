@@ -4,6 +4,7 @@ from django.http import JsonResponse
 from django.urls import include, path
 
 from apps.library.views import (
+    bulk_tagging,
     clip_stream,
     clips_browser,
     lesson_view,
@@ -38,6 +39,7 @@ urlpatterns = [
     path("clips/", clips_browser, name="clips-browser"),
     path("clips/<int:clip_id>/stream/", clip_stream, name="clip-stream"),
     path("tags/", tag_manager, name="tag-manager"),
+    path("tags/bulk/", bulk_tagging, name="bulk-tagging"),
     path("tags/<int:tag_id>/edit/", tag_edit, name="tag-edit"),
     path("tags/<int:tag_id>/delete/", tag_delete, name="tag-delete"),
     path("queue-status/", queue_status, name="queue-status"),
