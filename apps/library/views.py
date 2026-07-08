@@ -274,6 +274,47 @@ def source_videos(request):
     )
 
 
+def _lesson_view_clip_payload(clips: list[Clip]) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for clip in clips:
+        start = float(clip.start_seconds)
+        end = float(clip.end_seconds)
+        payload.append(
+            {
+                "id": clip.id,
+                "startSeconds": start,
+                "endSeconds": end,
+                "highlightScore": clip.highlight_score,
+                "label": f"{start:.1f}s–{end:.1f}s",
+            }
+        )
+    return payload
+
+
+@login_required
+def lesson_view(request, video_id: int):
+    video = get_object_or_404(
+        Video.objects.filter(video_type=Video.VideoType.TYPE_A),
+        pk=video_id,
+    )
+    clips = list(video.clips.order_by("start_seconds", "id"))
+    clips_json = json.dumps(
+        _lesson_view_clip_payload(clips),
+        separators=(",", ":"),
+    )
+    return render(
+        request,
+        "library/lesson_view.html",
+        {
+            "video": video,
+            "clips": clips,
+            "clips_json": clips_json,
+            "duration_label": format_duration_seconds(video.duration_seconds),
+            "player_selector": "#lesson-source-player",
+        },
+    )
+
+
 @login_required
 def queue_status(request):
     jobs = list(

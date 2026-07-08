@@ -26,13 +26,15 @@ Django + Postgres + Caddy bootstrap for local development.
 
    ```bash
    uv sync --all-groups
+   npm install --prefix frontend
+   npm run build --prefix frontend
    uv run python3 manage.py check
    uv run pytest
    ruff check .
    uv run black --check .
    ```
 
-Django and the pipeline worker run on the host, not in Docker.
+Django and the pipeline worker run on the host, not in Docker. The Lesson View timeline island bundle lives in `static/islands/` after the Vite build.
 
 ## Storage root
 
