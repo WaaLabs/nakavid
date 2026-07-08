@@ -1,0 +1,11 @@
+{
+  "src/islands/timeline-scrub/main.tsx": {
+    "file": "timeline-scrub.js",
+    "name": "timeline-scrub",
+    "src": "src/islands/timeline-scrub/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/timeline-scrub.css"
+    ]
+  }
+}

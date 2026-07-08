@@ -118,6 +118,7 @@
           {% if row.duration_label %}
           <p>Duration: {{ row.duration_label }}</p>
           {% endif %}
+          <p><a href="{% url 'lesson-view' row.video.id %}">Open Lesson View</a></p>
           <video controls preload="metadata" src="{% url 'video-stream' row.video.id %}"></video>
         </div>
       </article>

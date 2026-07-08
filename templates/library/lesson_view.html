@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ video.title }} — Lesson View — NakaVid</title>
+    <link rel="stylesheet" href="{% static 'islands/assets/timeline-scrub.css' %}" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 72rem;
+        padding: 0 1rem;
+        background: #0b1220;
+        color: #e2e8f0;
+      }
+      nav {
+        margin-bottom: 1.5rem;
+      }
+      nav a {
+        margin-right: 1rem;
+        color: #93c5fd;
+      }
+      .meta {
+        color: #94a3b8;
+        margin-bottom: 1rem;
+      }
+      .player-wrap {
+        background: #000;
+        border-radius: 0.5rem;
+        overflow: hidden;
+      }
+      video {
+        width: 100%;
+        display: block;
+        max-height: 70vh;
+        background: #000;
+      }
+      .clip-list {
+        margin-top: 1.5rem;
+      }
+      .clip-list h2 {
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+      }
+      .clip-list ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.5rem;
+      }
+      .clip-list li {
+        font-size: 0.875rem;
+        color: #cbd5e1;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="{% url 'source-videos' %}">Source Videos</a>
+      <a href="{% url 'clips-browser' %}">Clips Browser</a>
+      <a href="{% url 'queue-status' %}">Queue Status</a>
+      <a href="{% url 'type-a-ingest' %}">Type A ingest</a>
+      <a href="{% url 'type-b-ingest' %}">Type B ingest</a>
+    </nav>
+
+    <h1>{{ video.title }}</h1>
+    <p class="meta">
+      Class: {{ video.class_name }} · Theme: {{ video.theme }} ·
+      Date: {{ video.recorded_at|date:"Y-m-d" }}
+      {% if duration_label %} · Duration: {{ duration_label }}{% endif %}
+    </p>
+
+    <div class="player-wrap">
+      <video
+        id="lesson-source-player"
+        controls
+        preload="metadata"
+        src="{% url 'video-stream' video.id %}"
+      ></video>
+    </div>
+
+    <div
+      id="lesson-timeline-island"
+      data-duration-seconds="{{ video.duration_seconds }}"
+      data-player-selector="{{ player_selector }}"
+      data-clips="{{ clips_json|escape }}"
+    ></div>
+
+    <section class="clip-list">
+      <h2>Extracted clips</h2>
+      {% if clips %}
+      <ul>
+        {% for clip in clips %}
+        <li>
+          #{{ clip.id }} · {{ clip.start_seconds }}s–{{ clip.end_seconds }}s ·
+          score {{ clip.highlight_score }}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">No extracted clips yet.</p>
+      {% endif %}
+    </section>
+
+    <script type="module" src="{% static 'islands/timeline-scrub.js' %}"></script>
+  </body>
+</html>
