@@ -9,6 +9,12 @@
         margin: 2rem auto;
         max-width: 40rem;
       }
+      nav {
+        margin-bottom: 1.5rem;
+      }
+      nav a {
+        margin-right: 1rem;
+      }
       .drop-zone {
         border: 2px dashed #888;
         border-radius: 0.5rem;
@@ -38,6 +44,14 @@
     </style>
   </head>
   <body>
+    <nav>
+      <a href="{% url 'source-videos' %}">Source Videos</a>
+      <a href="{% url 'clips-browser' %}">Clips Browser</a>
+      <a href="{% url 'queue-status' %}">Queue Status</a>
+      <a href="{% url 'type-a-ingest' %}">Type A ingest</a>
+      <a href="{% url 'type-b-ingest' %}">Type B ingest</a>
+    </nav>
+
     <h1>Type B ingest</h1>
     <p>Upload an in-the-moment clip with class, date, and theme metadata.</p>
 

@@ -13,7 +13,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.library.duration import format_duration_seconds
 from apps.library.forms import (
@@ -39,6 +39,7 @@ from apps.library.storage_paths import (
     to_accel_redirect_path,
 )
 from apps.pipeline.enqueue import STUB_DURATION_SECONDS, enqueue_probe_job
+from apps.pipeline.models import Job
 
 
 def _write_uploaded_file(*, destination: Path, uploaded_file) -> None:
@@ -271,6 +272,38 @@ def source_videos(request):
             "video_rows": video_rows,
         },
     )
+
+
+@login_required
+def queue_status(request):
+    jobs = list(
+        Job.objects.select_related("video", "scoring_params").order_by("-created_at", "-id")[:50]
+    )
+    status_counts = {
+        status: sum(1 for job in jobs if job.status == status)
+        for status, _label in Job.Status.choices
+    }
+    return render(
+        request,
+        "library/queue_status.html",
+        {
+            "jobs": jobs,
+            "status_counts": status_counts,
+        },
+    )
+
+
+@login_required
+@require_POST
+def queue_requeue_job(request, job_id: int):
+    job = get_object_or_404(Job, pk=job_id)
+    if job.status == Job.Status.ERROR:
+        job.status = Job.Status.PENDING
+        job.claimed_at = None
+        job.finished_at = None
+        job.stderr = ""
+        job.save(update_fields=["status", "claimed_at", "finished_at", "stderr", "updated_at"])
+    return redirect("queue-status")
 
 
 @login_required
