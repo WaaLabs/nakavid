@@ -28,7 +28,7 @@ Django + Postgres + Caddy bootstrap for local development.
    uv sync --all-groups
    uv run python3 manage.py check
    uv run pytest
-   uv run ruff check .
+   ruff check .
    uv run black --check .
    ```
 

@@ -15,9 +15,15 @@
       in
       {
         devShells.default = pkgs.mkShell {
+          NIX_LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+            pkgs.stdenv.cc.cc.lib
+            pkgs.zlib
+          ];
+
           packages = with pkgs; [
             python312
             uv
+            ruff
             docker
             docker-compose
             ffmpeg
@@ -26,6 +32,8 @@
 
           shellHook = ''
             export UV_PYTHON_DOWNLOADS=never
+            export NIX_LD="${pkgs.stdenv.cc.bintools.dynamicLinker}"
+            export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
             echo "NakaVid dev shell ready."
             echo "Run: uv sync --all-groups"
           '';
