@@ -117,9 +117,7 @@ def test_process_job_captures_handler_errors_on_stderr(pending_job):
 
 @pytest.mark.django_db
 def test_dispatch_job_routes_all_job_types(video):
-    probe_result = __import__(
-        "apps.pipeline.probe", fromlist=["ProbeResult"]
-    ).ProbeResult(
+    probe_result = __import__("apps.pipeline.probe", fromlist=["ProbeResult"]).ProbeResult(
         duration_seconds=120,
         orientation=Video.Orientation.LANDSCAPE,
         video_codec="h264",
