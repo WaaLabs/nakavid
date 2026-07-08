@@ -6,6 +6,7 @@ from django.urls import include, path
 from apps.library.views import (
     clip_stream,
     clips_browser,
+    queue_status,
     source_videos,
     type_a_ingest,
     type_a_upload_create,
@@ -31,6 +32,7 @@ urlpatterns = [
     path("session/", session_info, name="session-info"),
     path("clips/", clips_browser, name="clips-browser"),
     path("clips/<int:clip_id>/stream/", clip_stream, name="clip-stream"),
+    path("queue-status/", queue_status, name="queue-status"),
     path("source-videos/", source_videos, name="source-videos"),
     path("source-videos/<int:video_id>/stream/", video_stream, name="video-stream"),
     path("ingest/type-b/", type_b_ingest, name="type-b-ingest"),
