@@ -76,6 +76,25 @@
       .empty {
         color: #6b7280;
       }
+      .error-cell {
+        max-width: 28rem;
+      }
+      .error-cell pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.82rem;
+        color: #991b1b;
+      }
+      .error-muted {
+        color: #6b7280;
+      }
+      .actions form {
+        margin: 0;
+      }
+      .actions button {
+        padding: 0.25rem 0.5rem;
+      }
     </style>
   </head>
   <body>
@@ -89,6 +108,15 @@
 
     <h1>Queue Status</h1>
     <p>Latest pipeline jobs for ingest, scoring, and clip extraction.</p>
+    <p class="error-muted">Auto-refreshes every 10 seconds.</p>
+
+    {% if messages %}
+    <ul>
+      {% for message in messages %}
+      <li>{{ message }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
 
     <section class="status-cards" aria-label="Queue totals">
       <article class="status-card">
@@ -113,23 +141,46 @@
     <table aria-label="Recent jobs">
       <thead>
         <tr>
-          <th>Created</th>
+          <th>Timestamps</th>
           <th>Type</th>
           <th>Status</th>
           <th>Video</th>
           <th>Class / Theme</th>
+          <th>stderr</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for job in jobs %}
         <tr>
-          <td>{{ job.created_at|date:"Y-m-d H:i" }}</td>
+          <td>
+            Created: {{ job.created_at|date:"Y-m-d H:i" }}<br />
+            Claimed: {% if job.claimed_at %}{{ job.claimed_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}<br />
+            Finished: {% if job.finished_at %}{{ job.finished_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}
+          </td>
           <td>{{ job.get_job_type_display }}</td>
           <td>
             <span class="status-badge status-{{ job.status }}">{{ job.get_status_display }}</span>
           </td>
           <td>{{ job.video.title }}</td>
           <td>{{ job.video.class_name }} / {{ job.video.theme }}</td>
+          <td class="error-cell">
+            {% if job.status == "error" and job.stderr %}
+            <pre>{{ job.stderr }}</pre>
+            {% else %}
+            <span class="error-muted">-</span>
+            {% endif %}
+          </td>
+          <td class="actions">
+            {% if job.status == "error" %}
+            <form method="post" action="{% url 'queue-requeue-job' job.id %}">
+              {% csrf_token %}
+              <button type="submit">Re-queue</button>
+            </form>
+            {% else %}
+            <span class="error-muted">-</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -137,5 +188,10 @@
     {% else %}
     <p class="empty">No jobs have been queued yet.</p>
     {% endif %}
+    <script>
+      window.setInterval(function () {
+        window.location.reload();
+      }, 10000);
+    </script>
   </body>
 </html>

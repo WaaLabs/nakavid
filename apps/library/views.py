@@ -13,7 +13,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.library.duration import format_duration_seconds
 from apps.library.forms import (
@@ -292,6 +292,19 @@ def queue_status(request):
             "status_counts": status_counts,
         },
     )
+
+
+@login_required
+@require_POST
+def queue_requeue_job(request, job_id: int):
+    job = get_object_or_404(Job, pk=job_id)
+    if job.status == Job.Status.ERROR:
+        job.status = Job.Status.PENDING
+        job.claimed_at = None
+        job.finished_at = None
+        job.stderr = ""
+        job.save(update_fields=["status", "claimed_at", "finished_at", "stderr", "updated_at"])
+    return redirect("queue-status")
 
 
 @login_required
