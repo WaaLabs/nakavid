@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Combine Builder — NakaVid</title>
+    <link rel="stylesheet" href="{% static 'islands/assets/drag-combine.css' %}" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem auto;
+        max-width: 80rem;
+        padding: 0 1rem;
+        background: #0b1220;
+        color: #e2e8f0;
+      }
+      nav {
+        margin-bottom: 1.5rem;
+      }
+      nav a {
+        margin-right: 1rem;
+        color: #93c5fd;
+      }
+      .intro {
+        color: #94a3b8;
+        margin-bottom: 1.5rem;
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-end;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        border: 1px solid #334155;
+        border-radius: 0.5rem;
+        background: #111827;
+      }
+      .field label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+        font-size: 0.875rem;
+      }
+      .filters input {
+        background: #0f172a;
+        border: 1px solid #475569;
+        color: #e2e8f0;
+        border-radius: 0.375rem;
+        padding: 0.375rem 0.5rem;
+      }
+      .filters button,
+      .filters a {
+        color: #93c5fd;
+      }
+      .errors {
+        color: #fca5a5;
+        margin-bottom: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="{% url 'source-videos' %}">Source Videos</a>
+      <a href="{% url 'clips-browser' %}">Clips Browser</a>
+      <a href="{% url 'combine-builder' %}">Combine Builder</a>
+      <a href="{% url 'queue-status' %}">Queue Status</a>
+      <a href="{% url 'tag-manager' %}">Tag Manager</a>
+      <a href="{% url 'bulk-tagging' %}">Bulk Tagging</a>
+      <a href="{% url 'type-a-ingest' %}">Type A ingest</a>
+      <a href="{% url 'type-b-ingest' %}">Type B ingest</a>
+    </nav>
+
+    <h1>Combine Builder</h1>
+    <p class="intro">
+      Drag clips into an ordered list, preview them sequentially, then submit to enqueue a
+      combine export job.
+    </p>
+
+    <form method="get" class="filters">
+      <div class="field">
+        <label for="id_class_name">Class</label>
+        {{ form.class_name }}
+      </div>
+      <div class="field">
+        <label for="id_recorded_date">Date</label>
+        {{ form.recorded_date }}
+      </div>
+      <div class="field">
+        <label for="id_min_score">Min score</label>
+        {{ form.min_score }}
+      </div>
+      <button type="submit">Filter clips</button>
+      <a href="{% url 'combine-builder' %}">Clear</a>
+    </form>
+
+    {% if form.errors %}
+    <div class="errors">{{ form.errors }}</div>
+    {% endif %}
+
+    <div
+      id="combine-builder-island"
+      data-clips="{{ clips_json|escape }}"
+      data-submit-url="{{ submit_url }}"
+      data-csrf-token="{{ csrf_token }}"
+    ></div>
+
+    <script type="module" src="{% static 'islands/drag-combine.js' %}"></script>
+  </body>
+</html>

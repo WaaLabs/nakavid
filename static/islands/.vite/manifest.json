@@ -1,9 +1,28 @@
 {
+  "_cn-D6cyFGxv.js": {
+    "file": "chunks/cn-D6cyFGxv.js",
+    "name": "cn"
+  },
+  "src/islands/drag-combine/main.tsx": {
+    "file": "drag-combine.js",
+    "name": "drag-combine",
+    "src": "src/islands/drag-combine/main.tsx",
+    "isEntry": true,
+    "imports": [
+      "_cn-D6cyFGxv.js"
+    ],
+    "css": [
+      "assets/drag-combine.css"
+    ]
+  },
   "src/islands/timeline-scrub/main.tsx": {
     "file": "timeline-scrub.js",
     "name": "timeline-scrub",
     "src": "src/islands/timeline-scrub/main.tsx",
     "isEntry": true,
+    "imports": [
+      "_cn-D6cyFGxv.js"
+    ],
     "css": [
       "assets/timeline-scrub.css"
     ]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from apps.library.models import Video
+from apps.library.models import Combine, Video
 from apps.pipeline.models import Job
 from apps.pipeline.scoring import get_active_scoring_params
 
@@ -25,4 +25,17 @@ def enqueue_clip_extraction_job(*, video: Video, scoring_params_id: int | None) 
         video=video,
         job_type=Job.JobType.CLIP_EXTRACTION,
         scoring_params_id=scoring_params_id,
+    )
+
+
+def enqueue_combine_export_job(*, combine: Combine) -> Job:
+    first_combine_clip = (
+        combine.combine_clips.select_related("clip__video").order_by("position").first()
+    )
+    if first_combine_clip is None:
+        raise ValueError("Combine has no clips")
+    return Job.objects.create(
+        video=first_combine_clip.clip.video,
+        combine=combine,
+        job_type=Job.JobType.COMBINE_EXPORT,
     )

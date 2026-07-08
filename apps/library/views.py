@@ -19,13 +19,14 @@ from apps.library.duration import format_duration_seconds
 from apps.library.forms import (
     BulkTagForm,
     ClipsBrowserFilterForm,
+    CombineBuilderSubmitForm,
     SourceVideosFilterForm,
     TagCategoryForm,
     TagForm,
     TypeAIngestMetadataForm,
     TypeBIngestForm,
 )
-from apps.library.models import Clip, Tag, TagCategory, Video
+from apps.library.models import Clip, Combine, CombineClip, Tag, TagCategory, Video
 from apps.library.resumable_upload import (
     TUS_RESUMABLE_HEADER,
     TUS_VERSION,
@@ -41,7 +42,11 @@ from apps.library.storage_paths import (
     to_absolute_storage_path,
     to_accel_redirect_path,
 )
-from apps.pipeline.enqueue import STUB_DURATION_SECONDS, enqueue_probe_job
+from apps.pipeline.enqueue import (
+    STUB_DURATION_SECONDS,
+    enqueue_combine_export_job,
+    enqueue_probe_job,
+)
 from apps.pipeline.models import Job
 
 
@@ -519,3 +524,83 @@ def bulk_tagging(request):
         form = BulkTagForm()
 
     return render(request, "library/bulk_tagging.html", {"form": form})
+
+
+def _combine_builder_clip_payload(*, clips: list[Clip], request) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for clip in clips:
+        start = float(clip.start_seconds)
+        end = float(clip.end_seconds)
+        label = f"{clip.video.title} · {start:.1f}s–{end:.1f}s · score {clip.highlight_score}"
+        payload.append(
+            {
+                "id": clip.id,
+                "label": label,
+                "streamUrl": request.build_absolute_uri(
+                    reverse("clip-stream", kwargs={"clip_id": clip.id})
+                ),
+                "durationSeconds": max(end - start, 0.0),
+                "highlightScore": clip.highlight_score,
+            }
+        )
+    return payload
+
+
+@login_required
+def combine_builder(request):
+    form = ClipsBrowserFilterForm(request.GET)
+    clips = _filtered_clips(form=form) if form.is_valid() else Clip.objects.none()
+    clip_list = list(clips)
+    clips_json = json.dumps(
+        _combine_builder_clip_payload(clips=clip_list, request=request),
+        separators=(",", ":"),
+    )
+    return render(
+        request,
+        "library/combine_builder.html",
+        {
+            "form": form,
+            "clips_json": clips_json,
+            "submit_url": reverse("combine-builder-submit"),
+        },
+    )
+
+
+@login_required
+@require_POST
+def combine_builder_submit(request):
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"errors": {"__all__": ["Request body must be JSON."]}}, status=400)
+
+    form = CombineBuilderSubmitForm(payload)
+    if not form.is_valid():
+        return JsonResponse({"errors": form.errors}, status=400)
+
+    clip_ids = form.cleaned_data["clip_ids"]
+    clips_by_id = {
+        clip.pk: clip for clip in Clip.objects.select_related("video").filter(pk__in=clip_ids)
+    }
+
+    with transaction.atomic():
+        combine = Combine.objects.create(
+            title=form.cleaned_data["title"],
+            created_by=request.user,
+        )
+        for position, clip_id in enumerate(clip_ids, start=1):
+            CombineClip.objects.create(
+                combine=combine,
+                clip=clips_by_id[clip_id],
+                position=position,
+            )
+        job = enqueue_combine_export_job(combine=combine)
+
+    return JsonResponse(
+        {
+            "combineId": combine.pk,
+            "jobId": job.pk,
+            "queueStatusUrl": request.build_absolute_uri(reverse("queue-status")),
+        },
+        status=201,
+    )
