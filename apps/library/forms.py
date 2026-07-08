@@ -1,7 +1,8 @@
 from django import forms
+from django.db import models
 from django.utils.text import get_valid_filename, slugify
 
-from apps.library.models import Tag, TagCategory
+from apps.library.models import Clip, Tag, TagCategory, Video
 
 
 class TypeAIngestMetadataForm(forms.Form):
@@ -79,3 +80,70 @@ class TagForm(forms.ModelForm):
         if not slug:
             raise forms.ValidationError("Enter a label so a slug can be generated.")
         return slug
+
+
+class BulkTagForm(forms.Form):
+    class Action(models.TextChoices):
+        ADD = "add", "Add tags"
+        REMOVE = "remove", "Remove tags"
+
+    videos = forms.ModelMultipleChoiceField(
+        queryset=Video.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label="Videos",
+    )
+    clips = forms.ModelMultipleChoiceField(
+        queryset=Clip.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label="Clips",
+    )
+    tags = forms.ModelMultipleChoiceField(
+        queryset=Tag.objects.none(),
+        required=True,
+        widget=forms.CheckboxSelectMultiple,
+        label="Tags",
+    )
+    action = forms.ChoiceField(choices=Action.choices, initial=Action.ADD, label="Action")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["videos"].queryset = Video.objects.order_by("-recorded_at", "-id")
+        self.fields["clips"].queryset = Clip.objects.select_related("video").order_by(
+            "-video__recorded_at",
+            "-highlight_score",
+            "-id",
+        )
+        self.fields["tags"].queryset = Tag.objects.select_related("category").order_by(
+            "label",
+            "slug",
+        )
+        self.fields["videos"].label_from_instance = self._video_label
+        self.fields["clips"].label_from_instance = self._clip_label
+        self.fields["tags"].label_from_instance = self._tag_label
+
+    @staticmethod
+    def _video_label(video: Video) -> str:
+        date_label = video.recorded_at.date().isoformat()
+        return f"{video.title} · {video.class_name} · {date_label}"
+
+    @staticmethod
+    def _clip_label(clip: Clip) -> str:
+        start = clip.start_seconds
+        end = clip.end_seconds
+        return f"{clip.video.title} [{start}–{end}s] · score {clip.highlight_score}"
+
+    @staticmethod
+    def _tag_label(tag: Tag) -> str:
+        if tag.category_id:
+            return f"{tag.label} ({tag.category.name})"
+        return tag.label
+
+    def clean(self):
+        cleaned = super().clean()
+        videos = cleaned.get("videos") or Video.objects.none()
+        clips = cleaned.get("clips") or Clip.objects.none()
+        if not videos and not clips:
+            raise forms.ValidationError("Select at least one video or clip.")
+        return cleaned
