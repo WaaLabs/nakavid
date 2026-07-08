@@ -100,9 +100,10 @@ def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage
         scoring_params=params,
     )
 
-    with patch("apps.pipeline.handlers.run_ffmpeg_trim") as run_trim, patch(
-        "apps.pipeline.handlers.run_ffmpeg_thumbnail"
-    ) as run_thumbnail:
+    with (
+        patch("apps.pipeline.handlers.run_ffmpeg_trim") as run_trim,
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail") as run_thumbnail,
+    ):
         handle_clip_extraction(job)
 
     clips = list(Clip.objects.filter(video=video).order_by("storage_path"))
