@@ -10,7 +10,7 @@
 
     # Django authorises; Caddy intercepts X-Accel-Redirect and range-serves bytes
     # from /srv/nakavid without passing video through Django view code.
-    reverse_proxy localhost:8000 {
+    reverse_proxy host.docker.internal:8000 {
         @accel header X-Accel-Redirect *
         handle_response @accel {
             root * /srv/nakavid
