@@ -65,8 +65,7 @@ def _create_clip(*, storage_root: Path, user, suffix: str) -> Clip:
 
 def _create_combine_job(*, storage_root: Path, user, clip_ids: list[int]) -> tuple[Combine, Job]:
     clips = [
-        _create_clip(storage_root=storage_root, user=user, suffix=str(index))
-        for index in clip_ids
+        _create_clip(storage_root=storage_root, user=user, suffix=str(index)) for index in clip_ids
     ]
     combine = Combine.objects.create(title="Week 1 Highlights", created_by=user)
     for position, clip in enumerate(clips, start=1):

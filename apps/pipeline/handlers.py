@@ -84,8 +84,7 @@ def handle_combine_export(job: Job) -> None:
     try:
         clip_paths = [
             _storage_path_to_file_path(combine_clip.clip.storage_path)
-            for combine_clip in combine.combine_clips.select_related("clip")
-            .order_by("position")
+            for combine_clip in combine.combine_clips.select_related("clip").order_by("position")
         ]
         relative_output_path = build_combine_relative_path(
             title=combine.title,
