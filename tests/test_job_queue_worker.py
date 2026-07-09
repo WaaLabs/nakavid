@@ -7,7 +7,7 @@ from django.core.management import call_command
 from django.db import connections
 from django.utils import timezone
 
-from apps.library.models import Video
+from apps.library.models import Combine, Video
 from apps.pipeline.handlers import dispatch_job
 from apps.pipeline.job_queue import claim_next_job, mark_job_done, mark_job_error
 from apps.pipeline.models import Job
@@ -128,11 +128,21 @@ def test_dispatch_job_routes_all_job_types(video):
     with patch("apps.pipeline.handlers.run_ffprobe", return_value=probe_result):
         scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
         with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
-            for job_type in Job.JobType.values:
-                job = Job.objects.create(
-                    video=video, job_type=job_type, status=Job.Status.PROCESSING
-                )
-                dispatch_job(job)
+            with patch("apps.pipeline.handlers.run_ffmpeg_concat"):
+                for job_type in Job.JobType.values:
+                    combine = None
+                    if job_type == Job.JobType.COMBINE_EXPORT:
+                        combine = Combine.objects.create(
+                            title="Dispatch Test",
+                            created_by=video.created_by,
+                        )
+                    job = Job.objects.create(
+                        video=video,
+                        combine=combine,
+                        job_type=job_type,
+                        status=Job.Status.PROCESSING,
+                    )
+                    dispatch_job(job)
 
 
 @pytest.mark.django_db(transaction=True)
