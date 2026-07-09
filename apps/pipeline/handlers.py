@@ -6,8 +6,13 @@ from pathlib import Path
 from django.conf import settings
 from django.db import transaction
 
-from apps.library.models import Clip, Video
-from apps.library.storage_paths import build_highlight_relative_paths, to_absolute_storage_path
+from apps.library.models import Clip, Combine, Video
+from apps.library.storage_paths import (
+    build_combine_relative_path,
+    build_highlight_relative_paths,
+    to_absolute_storage_path,
+)
+from apps.pipeline.combine_export import CombineExportError, run_ffmpeg_concat
 from apps.pipeline.enqueue import enqueue_clip_extraction_job, enqueue_score_job
 from apps.pipeline.extraction import (
     run_ffmpeg_thumbnail,
@@ -20,8 +25,12 @@ from apps.pipeline.scoring import run_segment_scoring, scoring_params_from_job
 
 
 def _video_file_path(video: Video) -> Path:
+    return _storage_path_to_file_path(video.source_path)
+
+
+def _storage_path_to_file_path(storage_path: str) -> Path:
     storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
-    relative_path = video.source_path.removeprefix("/nakavid/").lstrip("/")
+    relative_path = storage_path.removeprefix("/nakavid/").lstrip("/")
     return storage_root / relative_path
 
 
@@ -59,8 +68,43 @@ def handle_ingest(job: Job) -> None:
     """Skeleton handler — real ingest pipeline stages land in later issues."""
 
 
+def _mark_combine_error(combine: Combine) -> None:
+    combine.status = Combine.Status.ERROR
+    combine.save(update_fields=["status", "updated_at"])
+
+
 def handle_combine_export(job: Job) -> None:
-    """Skeleton handler — ffmpeg concat lands in the combine export worker issue."""
+    combine = job.combine
+    if combine is None:
+        raise CombineExportError("Combine export job is missing a combine")
+
+    combine.status = Combine.Status.PROCESSING
+    combine.save(update_fields=["status", "updated_at"])
+
+    try:
+        clip_paths = [
+            _storage_path_to_file_path(combine_clip.clip.storage_path)
+            for combine_clip in combine.combine_clips.select_related("clip").order_by("position")
+        ]
+        relative_output_path = build_combine_relative_path(
+            title=combine.title,
+            created_at=combine.created_at,
+        )
+        storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+        absolute_output_path = to_absolute_storage_path(storage_root, relative_output_path)
+        output_file_path = storage_root / relative_output_path
+
+        run_ffmpeg_concat(input_paths=clip_paths, target_path=output_file_path)
+
+        combine.output_path = absolute_output_path
+        combine.status = Combine.Status.DONE
+        combine.save(update_fields=["output_path", "status", "updated_at"])
+    except CombineExportError:
+        _mark_combine_error(combine)
+        raise
+    except Exception:
+        _mark_combine_error(combine)
+        raise
 
 
 def handle_clip_extraction(job: Job) -> None:

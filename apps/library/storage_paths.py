@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 
 ORIGINALS_PREFIX = "originals"
 HIGHLIGHTS_PREFIX = "highlights"
+COMBINES_PREFIX = "combines"
 _PATH_SEGMENT_RE = re.compile(
     r"^originals/(?P<year>\d{4})/(?P<month>\d{2})/"
     r"(?P<date>\d{8})_(?P<class_name>[^/]+)_(?P<theme>[^/]+)/(?P<filename>[^/]+)$"
@@ -59,6 +60,14 @@ def build_highlight_relative_paths(
         / f"{date_token}_{class_slug}_{theme_slug}"
     )
     return str(base / f"{clip_name}.mp4"), str(base / f"{clip_name}.jpg")
+
+
+def build_combine_relative_path(*, title: str, created_at: date | datetime) -> str:
+    if isinstance(created_at, datetime):
+        created_at = created_at.date()
+    title_slug = slug_segment(title)
+    date_token = created_at.strftime("%Y%m%d")
+    return str(PurePosixPath(COMBINES_PREFIX) / f"{title_slug}_{date_token}.mp4")
 
 
 def to_absolute_storage_path(_storage_root, relative_path: str) -> str:

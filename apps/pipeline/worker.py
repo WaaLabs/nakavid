@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import traceback
 
+from apps.pipeline.combine_export import CombineExportError
 from apps.pipeline.handlers import dispatch_job
 from apps.pipeline.job_queue import mark_job_done, mark_job_error
 from apps.pipeline.models import Job
@@ -16,6 +17,9 @@ def process_job(job: Job) -> None:
         mark_job_error(job, stderr=str(exc))
         return
     except ScoringError as exc:
+        mark_job_error(job, stderr=str(exc))
+        return
+    except CombineExportError as exc:
         mark_job_error(job, stderr=str(exc))
         return
     except Exception as exc:
