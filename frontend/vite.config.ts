@@ -18,6 +18,10 @@ export default defineConfig({
           "./src/islands/timeline-scrub/main.tsx",
           import.meta.url,
         ).pathname,
+        "drag-combine": new URL(
+          "./src/islands/drag-combine/main.tsx",
+          import.meta.url,
+        ).pathname,
       },
       output: {
         entryFileNames: "[name].js",

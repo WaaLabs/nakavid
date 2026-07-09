@@ -59,6 +59,10 @@ def handle_ingest(job: Job) -> None:
     """Skeleton handler — real ingest pipeline stages land in later issues."""
 
 
+def handle_combine_export(job: Job) -> None:
+    """Skeleton handler — ffmpeg concat lands in the combine export worker issue."""
+
+
 def handle_clip_extraction(job: Job) -> None:
     video = job.video
     if video.video_type != Video.VideoType.TYPE_A:
@@ -168,6 +172,7 @@ JOB_HANDLERS = {
     Job.JobType.INGEST: handle_ingest,
     Job.JobType.CLIP_EXTRACTION: handle_clip_extraction,
     Job.JobType.SCORE: handle_score,
+    Job.JobType.COMBINE_EXPORT: handle_combine_export,
 }
 
 

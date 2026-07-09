@@ -147,3 +147,28 @@ class BulkTagForm(forms.Form):
         if not videos and not clips:
             raise forms.ValidationError("Select at least one video or clip.")
         return cleaned
+
+
+class CombineBuilderSubmitForm(forms.Form):
+    title = forms.CharField(max_length=255, label="Combine title")
+    clip_ids = forms.JSONField(label="Ordered clip IDs")
+
+    def clean_clip_ids(self) -> list[int]:
+        raw = self.cleaned_data.get("clip_ids")
+        if not isinstance(raw, list):
+            raise forms.ValidationError("clip_ids must be a JSON array.")
+        if not raw:
+            raise forms.ValidationError("Select at least one clip.")
+        clip_ids: list[int] = []
+        for index, value in enumerate(raw):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise forms.ValidationError(f"Invalid clip id at index {index}.")
+            clip_ids.append(value)
+        if len(set(clip_ids)) != len(clip_ids):
+            raise forms.ValidationError("Each clip may appear only once.")
+        existing = set(Clip.objects.filter(pk__in=clip_ids).values_list("pk", flat=True))
+        missing = [clip_id for clip_id in clip_ids if clip_id not in existing]
+        if missing:
+            missing_label = ", ".join(str(item) for item in missing)
+            raise forms.ValidationError(f"Unknown clip ids: {missing_label}")
+        return clip_ids

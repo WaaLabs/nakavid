@@ -1,6 +1,6 @@
 from django.db import models
 
-from apps.library.models import Video
+from apps.library.models import Combine, Video
 
 
 class ScoringParams(models.Model):
@@ -35,8 +35,12 @@ class Job(models.Model):
         INGEST = "ingest", "Ingest"
         CLIP_EXTRACTION = "clip_extraction", "Clip Extraction"
         SCORE = "score", "Score"
+        COMBINE_EXPORT = "combine_export", "Combine Export"
 
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="jobs")
+    combine = models.ForeignKey(
+        Combine, on_delete=models.CASCADE, related_name="jobs", null=True, blank=True
+    )
     scoring_params = models.ForeignKey(
         ScoringParams, on_delete=models.PROTECT, related_name="jobs", null=True, blank=True
     )
