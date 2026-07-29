@@ -125,7 +125,10 @@ def test_dispatch_job_routes_all_job_types(video):
         width=1920,
         height=1080,
     )
-    with patch("apps.pipeline.handlers.run_ffprobe", return_value=probe_result):
+    with (
+        patch("apps.pipeline.handlers.run_ffprobe", return_value=probe_result),
+        patch("apps.pipeline.handlers.run_ffmpeg_web_transcode"),
+    ):
         scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
         with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
             with patch("apps.pipeline.handlers.run_ffmpeg_concat"):

@@ -17,6 +17,9 @@ class Video(models.Model):
 
     title = models.CharField(max_length=255)
     source_path = models.CharField(max_length=1024, unique=True)
+    # Browser-safe H.264 rendition, set by the transcode stage when the source
+    # codec (e.g. HEVC) can't stream directly. Empty means the source is served.
+    playback_path = models.CharField(max_length=1024, blank=True, default="")
     video_type = models.CharField(max_length=16, choices=VideoType.choices)
     orientation = models.CharField(max_length=16, choices=Orientation.choices)
     class_name = models.CharField(max_length=120)

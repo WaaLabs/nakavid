@@ -62,6 +62,12 @@ def build_highlight_relative_paths(
     return str(base / f"{clip_name}.mp4"), str(base / f"{clip_name}.jpg")
 
 
+def build_playback_relative_path(source_relative_path: str) -> str:
+    """Sibling H.264 rendition path for a source that is not browser-playable."""
+    source = PurePosixPath(source_relative_path)
+    return str(source.with_name(f"{source.stem}__web.mp4"))
+
+
 def build_combine_relative_path(*, title: str, created_at: date | datetime) -> str:
     if isinstance(created_at, datetime):
         created_at = created_at.date()

@@ -20,6 +20,21 @@ class ProbeResult:
     video_codec: str
     width: int
     height: int
+    pixel_format: str = ""
+
+
+# Codec/pixel-format combinations a browser <video> element can decode directly.
+# Anything else (HEVC, VP9-in-mov, 10-bit H.264, 4:2:2/4:4:4, ...) plays audio
+# only and must be transcoded to H.264 8-bit 4:2:0 before it can stream.
+_BROWSER_SAFE_VIDEO_CODEC = "h264"
+_BROWSER_SAFE_PIXEL_FORMATS = frozenset({"", "yuv420p", "yuvj420p"})
+
+
+def needs_web_transcode(*, codec_name: str, pixel_format: str) -> bool:
+    """True when the source stream is not directly playable in a browser."""
+    if codec_name != _BROWSER_SAFE_VIDEO_CODEC:
+        return True
+    return pixel_format not in _BROWSER_SAFE_PIXEL_FORMATS
 
 
 def orientation_from_dimensions(*, width: int, height: int) -> str:
@@ -59,6 +74,7 @@ def parse_ffprobe_payload(payload: dict) -> ProbeResult:
         video_codec=str(codec_name),
         width=int(width),
         height=int(height),
+        pixel_format=str(video_stream.get("pix_fmt") or ""),
     )
 
 
@@ -70,7 +86,7 @@ def run_ffprobe(file_path: Path) -> ProbeResult:
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration:stream=codec_type,codec_name,width,height",
+                "format=duration:stream=codec_type,codec_name,width,height,pix_fmt",
                 "-of",
                 "json",
                 str(file_path),

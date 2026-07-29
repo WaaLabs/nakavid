@@ -362,7 +362,8 @@ def video_stream(request, video_id: int):
         pk=video_id,
     )
     response = HttpResponse()
-    response["X-Accel-Redirect"] = to_accel_redirect_path(video.source_path)
+    playback_storage_path = video.playback_path or video.source_path
+    response["X-Accel-Redirect"] = to_accel_redirect_path(playback_storage_path)
     response["Content-Type"] = ""
     return response
 
