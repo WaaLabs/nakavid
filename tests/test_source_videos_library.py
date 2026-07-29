@@ -154,6 +154,23 @@ def test_video_stream_returns_accel_redirect(authenticated_client, sample_videos
 
 
 @pytest.mark.django_db
+def test_video_stream_prefers_playback_path_when_set(authenticated_client, sample_videos):
+    client, _user = authenticated_client
+    type_a, _type_b = sample_videos
+    type_a.playback_path = to_absolute_storage_path(
+        None, "originals/2026/07/20260701_a_animals/full_lesson__web.mp4"
+    )
+    type_a.save(update_fields=["playback_path"])
+
+    response = client.get(reverse("video-stream", args=[type_a.id]))
+
+    assert response.status_code == 200
+    assert response["X-Accel-Redirect"] == (
+        "/originals/2026/07/20260701_a_animals/full_lesson__web.mp4"
+    )
+
+
+@pytest.mark.django_db
 def test_video_stream_rejects_type_b(authenticated_client, sample_videos):
     client, _user = authenticated_client
     _type_a, type_b = sample_videos

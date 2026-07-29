@@ -10,28 +10,37 @@ from apps.library.models import Clip, Combine, Video
 from apps.library.storage_paths import (
     build_combine_relative_path,
     build_highlight_relative_paths,
+    build_playback_relative_path,
     to_absolute_storage_path,
 )
 from apps.pipeline.combine_export import CombineExportError, run_ffmpeg_concat
-from apps.pipeline.enqueue import enqueue_clip_extraction_job, enqueue_score_job
+from apps.pipeline.enqueue import (
+    enqueue_clip_extraction_job,
+    enqueue_score_job,
+    enqueue_transcode_job,
+)
 from apps.pipeline.extraction import (
     run_ffmpeg_thumbnail,
     run_ffmpeg_trim,
     select_clip_segments,
 )
 from apps.pipeline.models import Job
-from apps.pipeline.probe import run_ffprobe
+from apps.pipeline.probe import needs_web_transcode, run_ffprobe
 from apps.pipeline.scoring import run_segment_scoring, scoring_params_from_job
+from apps.pipeline.transcode import run_ffmpeg_web_transcode
 
 
 def _video_file_path(video: Video) -> Path:
     return _storage_path_to_file_path(video.source_path)
 
 
+def _storage_path_to_relative(storage_path: str) -> str:
+    return storage_path.removeprefix("/nakavid/").lstrip("/")
+
+
 def _storage_path_to_file_path(storage_path: str) -> Path:
     storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
-    relative_path = storage_path.removeprefix("/nakavid/").lstrip("/")
-    return storage_root / relative_path
+    return storage_root / _storage_path_to_relative(storage_path)
 
 
 def handle_probe(job: Job) -> None:
@@ -61,7 +70,31 @@ def handle_probe(job: Job) -> None:
                 clip.end_seconds = Decimal(probe_result.duration_seconds)
                 clip.save(update_fields=["end_seconds", "updated_at"])
         elif video.video_type == Video.VideoType.TYPE_A:
-            enqueue_score_job(video=video)
+            if needs_web_transcode(
+                codec_name=probe_result.video_codec,
+                pixel_format=probe_result.pixel_format,
+            ):
+                enqueue_transcode_job(video=video)
+            else:
+                enqueue_score_job(video=video)
+
+
+def handle_transcode(job: Job) -> None:
+    """Produce a browser-safe H.264 rendition for a non-playable source, then score."""
+    video = job.video
+    storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+    relative_playback = build_playback_relative_path(_storage_path_to_relative(video.source_path))
+    target_file_path = storage_root / relative_playback
+
+    run_ffmpeg_web_transcode(
+        source_path=_video_file_path(video),
+        target_path=target_file_path,
+    )
+
+    video.playback_path = to_absolute_storage_path(storage_root, relative_playback)
+    video.save(update_fields=["playback_path", "updated_at"])
+
+    enqueue_score_job(video=video)
 
 
 def handle_ingest(job: Job) -> None:
@@ -214,6 +247,7 @@ def handle_score(job: Job) -> None:
 JOB_HANDLERS = {
     Job.JobType.PROBE: handle_probe,
     Job.JobType.INGEST: handle_ingest,
+    Job.JobType.TRANSCODE: handle_transcode,
     Job.JobType.CLIP_EXTRACTION: handle_clip_extraction,
     Job.JobType.SCORE: handle_score,
     Job.JobType.COMBINE_EXPORT: handle_combine_export,

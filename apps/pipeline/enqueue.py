@@ -11,6 +11,10 @@ def enqueue_probe_job(*, video: Video) -> Job:
     return Job.objects.create(video=video, job_type=Job.JobType.PROBE)
 
 
+def enqueue_transcode_job(*, video: Video) -> Job:
+    return Job.objects.create(video=video, job_type=Job.JobType.TRANSCODE)
+
+
 def enqueue_score_job(*, video: Video) -> Job:
     params = get_active_scoring_params()
     return Job.objects.create(

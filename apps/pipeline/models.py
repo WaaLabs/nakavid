@@ -33,6 +33,7 @@ class Job(models.Model):
     class JobType(models.TextChoices):
         PROBE = "probe", "Probe"
         INGEST = "ingest", "Ingest"
+        TRANSCODE = "transcode", "Transcode"
         CLIP_EXTRACTION = "clip_extraction", "Clip Extraction"
         SCORE = "score", "Score"
         COMBINE_EXPORT = "combine_export", "Combine Export"
