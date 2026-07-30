@@ -225,3 +225,5 @@ __marimo__/
 frontend/node_modules/
 staticfiles/
 
+# Test data
+data/
