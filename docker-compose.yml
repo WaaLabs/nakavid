@@ -1,12 +1,14 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-nakavid}
       POSTGRES_USER: ${POSTGRES_USER:-nakavid}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nakavid}
     ports:
-      - "5432:5432"
+      # Loopback only — the DB is never LAN-reachable; Caddy is the sole LAN entry point.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +19,7 @@ services:
 
   caddy:
     image: caddy:2.8-alpine
+    restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
