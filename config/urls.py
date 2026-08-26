@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from apps.library.views import (
     bulk_tagging,
@@ -34,6 +35,7 @@ def session_info(request):
 
 
 urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="clips-browser"), name="home"),
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
     path("healthz/", healthcheck, name="healthcheck"),

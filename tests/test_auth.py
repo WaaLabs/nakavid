@@ -27,3 +27,22 @@ def test_session_endpoint_returns_logged_in_user(client):
 
     assert response.status_code == 200
     assert response.json() == {"ok": True, "username": user.username}
+
+
+@pytest.mark.django_db
+def test_root_redirects_to_clips_browser(client):
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("clips-browser")
+
+
+@pytest.mark.django_db
+def test_root_reaches_clips_browser_when_logged_in(client):
+    User.objects.create_user(username="coach", password="secret123!")
+    assert client.login(username="coach", password="secret123!")
+
+    response = client.get("/", follow=True)
+
+    assert response.status_code == 200
+    assert response.redirect_chain[-1][0] == reverse("clips-browser")
