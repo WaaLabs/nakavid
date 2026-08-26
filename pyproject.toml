@@ -7,7 +7,9 @@ dependencies = [
   "django>=5.1",
   "librosa>=0.10",
   "numpy>=2.0",
-  "opencv-python-headless>=4.10",
+  # OpenCV 5 removed the Haar cascade API (CascadeClassifier) and ships no cascade
+  # XML data. v1 scoring is Haar-based by design (AGENTS.md: no torch), so stay on 4.x.
+  "opencv-python-headless>=4.10,<5",
   "psycopg[binary]>=3.2",
   "soundfile>=0.12",
 ]
