@@ -34,6 +34,19 @@ def _video_file_path(video: Video) -> Path:
     return _storage_path_to_file_path(video.source_path)
 
 
+def _playback_file_path(video: Video) -> Path:
+    """The browser-safe file when one exists, else the original.
+
+    The transcode stage writes an 8-bit H.264 copy precisely so downstream
+    output is playable in a browser. Anything producing files for playback
+    must start from that copy — cutting from a 10-bit HDR original yields
+    H.264 High 10 clips, which browsers decode as a black frame.
+    """
+    if video.playback_path:
+        return _storage_path_to_file_path(video.playback_path)
+    return _video_file_path(video)
+
+
 def _storage_path_to_relative(storage_path: str) -> str:
     return storage_path.removeprefix("/nakavid/").lstrip("/")
 
@@ -158,7 +171,7 @@ def handle_clip_extraction(job: Job) -> None:
         duration_seconds=duration_seconds,
     )
 
-    source_file_path = _video_file_path(video)
+    source_file_path = _playback_file_path(video)
     storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
     video_tag_ids = list(video.tags.values_list("id", flat=True))
 
