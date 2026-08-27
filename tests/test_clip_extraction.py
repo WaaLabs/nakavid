@@ -117,3 +117,66 @@ def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage
         assert clip.thumbnail_path.endswith(f"__clip_{index:03d}.jpg")
         assert clip.energy_curve
         assert list(clip.tags.values_list("slug", flat=True)) == ["warmup"]
+
+
+def _create_scoring_clip(*, video: Video, user) -> Clip:
+    return Clip.objects.create(
+        video=video,
+        storage_path=video.source_path,
+        start_seconds=Decimal("0.000"),
+        end_seconds=Decimal("120.000"),
+        highlight_score=90,
+        energy_curve=[
+            {"start": 8.0, "end": 12.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
+        ],
+        created_by=user,
+    )
+
+
+def _run_extraction(*, video: Video):
+    job = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.CLIP_EXTRACTION,
+        status=Job.Status.PROCESSING,
+        scoring_params=ScoringParams.objects.get(),
+    )
+    with (
+        patch("apps.pipeline.handlers.run_ffmpeg_trim") as run_trim,
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
+        handle_clip_extraction(job)
+    return run_trim
+
+
+@pytest.mark.django_db
+def test_extraction_cuts_from_the_transcoded_playback_file(storage_root, user):
+    """Clips must come from the browser-safe copy, not a 10-bit original."""
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    playback_relative = build_originals_relative_path(
+        recorded_at=timezone.now().date(),
+        class_name="Kids A",
+        theme="Summer Camp",
+        filename="lesson__web.mp4",
+    )
+    video.playback_path = to_absolute_storage_path(storage_root, playback_relative)
+    video.save(update_fields=["playback_path"])
+    _create_scoring_clip(video=video, user=user)
+
+    run_trim = _run_extraction(video=video)
+
+    assert run_trim.call_count >= 1
+    used = {str(call.kwargs["source_path"]) for call in run_trim.call_args_list}
+    assert used == {str(storage_root / playback_relative)}
+
+
+@pytest.mark.django_db
+def test_extraction_falls_back_to_source_when_no_playback_file(storage_root, user):
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    assert video.playback_path == ""
+    _create_scoring_clip(video=video, user=user)
+
+    run_trim = _run_extraction(video=video)
+
+    assert run_trim.call_count >= 1
+    for call in run_trim.call_args_list:
+        assert str(call.kwargs["source_path"]).endswith("lesson.mp4")
