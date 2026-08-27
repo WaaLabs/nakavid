@@ -233,7 +233,12 @@ def handle_score(job: Job) -> None:
     )
 
     with transaction.atomic():
-        clip = video.clips.order_by("id").first()
+        # Identify the whole-video scoring clip by its storage path, the same way
+        # handle_clip_extraction looks it up. Taking the first clip by id instead
+        # grabs an extracted highlight on any re-score, overwriting that row's
+        # curve and end_seconds with whole-video values while extraction then
+        # finds no scoring clip and silently does nothing.
+        clip = video.clips.filter(storage_path=video.source_path).order_by("id").first()
         if clip is None:
             clip = Clip.objects.create(
                 video=video,
