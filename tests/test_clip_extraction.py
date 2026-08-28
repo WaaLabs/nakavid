@@ -81,16 +81,16 @@ def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage
     video = _create_type_a_video(storage_root=storage_root, user=user)
     tag = Tag.objects.create(slug="warmup", label="Warmup")
     video.tags.add(tag)
-    placeholder = Clip.objects.create(
+    video.energy_curve = [
+        {"start": 8.0, "end": 12.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
+        {"start": 28.0, "end": 32.0, "score": 80.0, "signals": {"motion_energy": 0.2}},
+    ]
+    video.save(update_fields=["energy_curve"])
+    stale = Clip.objects.create(
         video=video,
-        storage_path=video.source_path,
+        storage_path="/nakavid/highlights/2026/08/sample/stale__clip_009.mp4",
         start_seconds=Decimal("0.000"),
-        end_seconds=Decimal("120.000"),
-        highlight_score=93,
-        energy_curve=[
-            {"start": 8.0, "end": 12.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
-            {"start": 28.0, "end": 32.0, "score": 80.0, "signals": {"motion_energy": 0.2}},
-        ],
+        end_seconds=Decimal("4.000"),
         created_by=user,
     )
     params = ScoringParams.objects.get()
@@ -113,7 +113,8 @@ def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage
 
     clips = list(Clip.objects.filter(video=video).order_by("storage_path"))
     assert len(clips) == 2
-    assert not Clip.objects.filter(pk=placeholder.pk).exists()
+    # A previous run's clips are rebuilt, not left behind.
+    assert not Clip.objects.filter(pk=stale.pk).exists()
     assert run_trim.call_count == 2
     assert run_thumbnail.call_count == 2
     for index, clip in enumerate(clips, start=1):
@@ -124,18 +125,12 @@ def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage
         assert list(clip.tags.values_list("slug", flat=True)) == ["warmup"]
 
 
-def _create_scoring_clip(*, video: Video, user) -> Clip:
-    return Clip.objects.create(
-        video=video,
-        storage_path=video.source_path,
-        start_seconds=Decimal("0.000"),
-        end_seconds=Decimal("120.000"),
-        highlight_score=90,
-        energy_curve=[
-            {"start": 8.0, "end": 12.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
-        ],
-        created_by=user,
-    )
+def _give_video_a_curve(*, video: Video, user=None) -> None:
+    video.energy_curve = [
+        {"start": 8.0, "end": 12.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
+    ]
+    video.highlight_score = 90
+    video.save(update_fields=["energy_curve", "highlight_score"])
 
 
 def _run_extraction(*, video: Video):
@@ -165,7 +160,7 @@ def test_extraction_cuts_from_the_transcoded_playback_file(storage_root, user):
     )
     video.playback_path = to_absolute_storage_path(storage_root, playback_relative)
     video.save(update_fields=["playback_path"])
-    _create_scoring_clip(video=video, user=user)
+    _give_video_a_curve(video=video)
 
     run_trim = _run_extraction(video=video)
 
@@ -178,60 +173,13 @@ def test_extraction_cuts_from_the_transcoded_playback_file(storage_root, user):
 def test_extraction_falls_back_to_source_when_no_playback_file(storage_root, user):
     video = _create_type_a_video(storage_root=storage_root, user=user)
     assert video.playback_path == ""
-    _create_scoring_clip(video=video, user=user)
+    _give_video_a_curve(video=video)
 
     run_trim = _run_extraction(video=video)
 
     assert run_trim.call_count >= 1
     for call in run_trim.call_args_list:
         assert str(call.kwargs["source_path"]).endswith("lesson.mp4")
-
-
-@pytest.mark.django_db
-def test_rescoring_an_extracted_video_does_not_corrupt_a_highlight(storage_root, user):
-    """Re-scoring must target the whole-video row, not an extracted clip.
-
-    Taking the first clip by id grabbed a highlight, overwrote its curve and
-    end_seconds with whole-video values, and left extraction with no scoring
-    clip to find — so it silently did nothing and the clips were never rebuilt.
-    """
-    from apps.pipeline.handlers import handle_score
-    from apps.pipeline.scoring import SegmentScoringResult
-
-    video = _create_type_a_video(storage_root=storage_root, user=user)
-    highlight = Clip.objects.create(
-        video=video,
-        storage_path="/nakavid/highlights/2026/08/sample/lesson__clip_001.mp4",
-        start_seconds=Decimal("10.000"),
-        end_seconds=Decimal("18.000"),
-        highlight_score=91,
-        energy_curve=[{"start": 10.0, "end": 14.0, "score": 91.0, "signals": {}}],
-        created_by=user,
-    )
-    job = Job.objects.create(
-        video=video,
-        job_type=Job.JobType.SCORE,
-        status=Job.Status.PROCESSING,
-        scoring_params=ScoringParams.objects.get(),
-    )
-    whole_video_curve = [{"start": 0.0, "end": 4.0, "score": 70.0, "signals": {}}]
-
-    with patch("apps.pipeline.handlers.run_segment_scoring") as run_scoring:
-        run_scoring.return_value = SegmentScoringResult(
-            energy_curve=whole_video_curve,
-            highlight_score=70,
-        )
-        handle_score(job)
-
-    highlight.refresh_from_db()
-    assert float(highlight.end_seconds) == 18.0
-    assert highlight.highlight_score == 91
-    assert len(highlight.energy_curve) == 1
-    assert highlight.energy_curve[0]["score"] == 91.0
-
-    scoring_clip = Clip.objects.get(video=video, storage_path=video.source_path)
-    assert scoring_clip.energy_curve == whole_video_curve
-    assert Job.objects.filter(video=video, job_type=Job.JobType.CLIP_EXTRACTION).exists()
 
 
 @pytest.mark.django_db
@@ -283,3 +231,25 @@ def test_min_gap_keeps_clips_from_running_together():
     assert len(tight) < len(loose)
     for earlier, later in zip(tight, tight[1:]):
         assert later.start_seconds - earlier.end_seconds >= 30
+
+
+@pytest.mark.django_db
+def test_extraction_without_a_curve_errors_rather_than_silently_doing_nothing(storage_root, user):
+    """A missing curve must surface, not report done having rebuilt nothing.
+
+    Extraction used to return early when it could not find the scoring row,
+    so the job recorded done in milliseconds and the clips were never rebuilt.
+    """
+    from apps.pipeline.extraction import ClipExtractionError
+
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    assert video.energy_curve == []
+    job = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.CLIP_EXTRACTION,
+        status=Job.Status.PROCESSING,
+        scoring_params=ScoringParams.objects.get(),
+    )
+
+    with pytest.raises(ClipExtractionError, match="no energy curve"):
+        handle_clip_extraction(job)

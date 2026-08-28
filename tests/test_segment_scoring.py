@@ -196,24 +196,30 @@ def test_handle_score_persists_energy_curve(storage_root, user):
     with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
         handle_score(job)
 
-    clip = Clip.objects.get(video=video)
-    assert clip.energy_curve == scoring_result.energy_curve
-    assert clip.highlight_score == 80
-    assert clip.start_seconds == Decimal("0.000")
-    assert clip.end_seconds == Decimal("12")
+    video.refresh_from_db()
+    assert video.energy_curve == scoring_result.energy_curve
+    assert video.highlight_score == 80
+    # No placeholder clip row — the curve belongs to the video.
+    assert not Clip.objects.filter(video=video).exists()
     extraction_job = Job.objects.filter(video=video, job_type=Job.JobType.CLIP_EXTRACTION).first()
     assert extraction_job is not None
     assert extraction_job.scoring_params_id == params.pk
 
 
 @pytest.mark.django_db
-def test_handle_score_updates_existing_clip(storage_root, user):
+def test_rescoring_replaces_the_curve_and_leaves_clips_alone(storage_root, user):
+    """A re-score overwrites the video's curve without touching extracted clips."""
     video = _create_type_a_video(storage_root=storage_root, user=user)
-    clip = Clip.objects.create(
+    video.energy_curve = [{"start": 0.0, "end": 4.0, "score": 10.0}]
+    video.highlight_score = 10
+    video.save(update_fields=["energy_curve", "highlight_score"])
+    highlight = Clip.objects.create(
         video=video,
-        storage_path=video.source_path,
-        start_seconds=Decimal("0.000"),
-        end_seconds=Decimal("1"),
+        storage_path="/nakavid/highlights/2026/08/sample/lesson__clip_001.mp4",
+        start_seconds=Decimal("10.000"),
+        end_seconds=Decimal("18.000"),
+        highlight_score=91,
+        energy_curve=[{"start": 10.0, "end": 14.0, "score": 91.0}],
         created_by=user,
     )
     job = Job.objects.create(video=video, job_type=Job.JobType.SCORE, status=Job.Status.PROCESSING)
@@ -225,9 +231,14 @@ def test_handle_score_updates_existing_clip(storage_root, user):
     with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
         handle_score(job)
 
-    clip.refresh_from_db()
-    assert clip.energy_curve == scoring_result.energy_curve
-    assert clip.highlight_score == 55
+    video.refresh_from_db()
+    assert video.energy_curve == scoring_result.energy_curve
+    assert video.highlight_score == 55
+
+    highlight.refresh_from_db()
+    assert highlight.highlight_score == 91
+    assert float(highlight.end_seconds) == 18.0
+    assert highlight.energy_curve == [{"start": 10.0, "end": 14.0, "score": 91.0}]
 
 
 @pytest.mark.django_db
