@@ -2,26 +2,29 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/utils/cn";
 
-const clipSegmentVariants = cva(
-  "absolute top-1 bottom-1 rounded-sm border cursor-pointer transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-300",
-  {
-    variants: {
-      tone: {
-        low: "bg-slate-500/80 border-slate-300/40 hover:opacity-90",
-        mid: "bg-amber-500/85 border-amber-200/50 hover:opacity-95",
-        high: "bg-emerald-500/90 border-emerald-100/60 hover:opacity-100",
-      },
-      active: {
-        true: "ring-2 ring-sky-300 z-10",
-        false: "",
-      },
+/**
+ * Positioning and colour live in timeline-scrub.css, not in utility classes.
+ * These were Tailwind utilities, but the project has no Tailwind — so
+ * `absolute` produced no rule, the bars stayed statically positioned, and the
+ * inline `left` offset was inert. Every clip stacked at the left of the track.
+ */
+const clipSegmentVariants = cva("timeline-scrub__clip", {
+  variants: {
+    tone: {
+      low: "timeline-scrub__clip--low",
+      mid: "timeline-scrub__clip--mid",
+      high: "timeline-scrub__clip--high",
     },
-    defaultVariants: {
-      tone: "mid",
-      active: false,
+    active: {
+      true: "timeline-scrub__clip--active",
+      false: "",
     },
   },
-);
+  defaultVariants: {
+    tone: "mid",
+    active: false,
+  },
+});
 
 export type ClipSegmentTone = NonNullable<
   VariantProps<typeof clipSegmentVariants>["tone"]
@@ -38,6 +41,7 @@ export function scoreToTone(score: number): ClipSegmentTone {
 }
 
 type ClipSegmentProps = {
+  href: string;
   label: string;
   leftPercent: number;
   widthPercent: number;
@@ -47,6 +51,7 @@ type ClipSegmentProps = {
 };
 
 export function ClipSegment({
+  href,
   label,
   leftPercent,
   widthPercent,
@@ -55,16 +60,21 @@ export function ClipSegment({
   onSelect,
 }: ClipSegmentProps) {
   return (
-    <button
-      type="button"
+    <a
+      href={href}
       className={cn(clipSegmentVariants({ tone, active }))}
       style={{
         left: `${leftPercent}%`,
-        width: `${Math.max(widthPercent, 0.4)}%`,
+        // Keep a very short clip clickable rather than sub-pixel wide.
+        width: `${Math.max(widthPercent, 0.6)}%`,
       }}
       title={label}
       aria-label={label}
-      onClick={onSelect}
+      onClick={(event) => {
+        // The track scrubs on click; a bar should select its clip instead.
+        event.stopPropagation();
+        onSelect();
+      }}
     />
   );
 }

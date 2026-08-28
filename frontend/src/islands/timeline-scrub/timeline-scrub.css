@@ -44,3 +44,51 @@
   color: var(--nv-text-muted);
   font-size: 0.875rem;
 }
+
+/* A clip's span within the source, positioned by its start time.
+ *
+ * These rules replace Tailwind utility classes that never resolved — the
+ * project has no Tailwind, so the bars were statically positioned and their
+ * inline left offsets did nothing. */
+.timeline-scrub__clip {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  min-width: 3px;
+  border-radius: var(--nv-radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    filter 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.timeline-scrub__clip:hover {
+  filter: brightness(1.15);
+}
+
+.timeline-scrub__clip:focus-visible {
+  outline: 2px solid var(--nv-accent);
+  outline-offset: 1px;
+}
+
+.timeline-scrub__clip--low {
+  background: rgb(100 116 139 / 0.85);
+  border-color: rgb(148 163 184 / 0.5);
+}
+
+.timeline-scrub__clip--mid {
+  background: rgb(245 158 11 / 0.85);
+  border-color: rgb(253 230 138 / 0.55);
+}
+
+.timeline-scrub__clip--high {
+  background: rgb(16 185 129 / 0.9);
+  border-color: rgb(167 243 208 / 0.6);
+}
+
+.timeline-scrub__clip--active {
+  box-shadow: 0 0 0 2px var(--nv-accent);
+  z-index: 10;
+}

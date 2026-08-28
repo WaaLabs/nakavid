@@ -123,6 +123,7 @@ export function TimelineScrub({
           return (
             <ClipSegment
               key={clip.id}
+              href={`#clip-${clip.id}`}
               label={`${clip.label} · score ${clip.highlightScore}`}
               leftPercent={leftPercent}
               widthPercent={widthPercent}

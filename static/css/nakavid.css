@@ -664,3 +664,10 @@ tbody tr:last-child td {
 .table-scroll {
   overflow-x: auto;
 }
+
+/* Jumping from the timeline to a clip should make it obvious which one. */
+.card:target {
+  border-color: var(--nv-accent);
+  box-shadow: 0 0 0 2px rgb(56 189 248 / 0.35);
+  scroll-margin-top: 4.5rem;
+}

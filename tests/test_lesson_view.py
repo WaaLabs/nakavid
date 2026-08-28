@@ -152,3 +152,17 @@ def test_source_videos_links_to_lesson_view(authenticated_client, type_a_with_cl
 
     assert response.status_code == 200
     assert reverse("lesson-view", args=[video.id]) in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_clip_cards_are_anchor_targets_for_the_timeline(authenticated_client, type_a_with_clips):
+    """Timeline bars link to #clip-<id>, so the cards must carry those ids."""
+    client, _user = authenticated_client
+    video, early, late = type_a_with_clips
+
+    response = client.get(reverse("lesson-view", args=[video.pk]))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    for clip in (early, late):
+        assert f'id="clip-{clip.pk}"' in content

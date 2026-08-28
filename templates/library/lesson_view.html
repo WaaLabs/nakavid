@@ -39,7 +39,7 @@
   {% if clips %}
   <div class="card-grid">
     {% for clip in clips %}
-    <article class="card">
+    <article class="card" id="clip-{{ clip.id }}">
       <div class="card__media">
         <video
           controls
