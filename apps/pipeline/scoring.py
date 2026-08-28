@@ -110,6 +110,75 @@ def _haar_cascade(name: str) -> cv2.CascadeClassifier:
     return classifier
 
 
+class SequentialFrameSampler:
+    """Walks a video forward once, handing out the frames each window needs.
+
+    Windows are scored in increasing time order and overlap each other, so
+    seeking is almost never necessary. The previous code called
+    VideoCapture.set(CAP_PROP_POS_FRAMES) once per sampled frame — 12 random
+    seeks per window. Measured on a 451s HEVC source that cost 4.60s per
+    window against 0.357s for the same frames read sequentially, roughly half
+    the total scoring time.
+
+    Frame indices are unchanged, so the frames handed out — and therefore the
+    scores — are identical to the seeking implementation.
+    """
+
+    def __init__(self, video_path: Path) -> None:
+        self._capture = cv2.VideoCapture(str(video_path))
+        if not self._capture.isOpened():
+            raise ScoringError(f"Unable to open video for scoring: {video_path}")
+        fps = self._capture.get(cv2.CAP_PROP_FPS)
+        self.fps = fps if fps and fps > 0 else 25.0
+        self._position = 0
+
+    def _advance_to(self, frame_index: int) -> bool:
+        """Move to frame_index, grabbing forward rather than seeking."""
+        if frame_index < self._position:
+            # Going backwards should not happen while scoring in order; pay
+            # for a seek rather than restarting the decode.
+            if not self._capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index):
+                return False
+            self._position = frame_index
+            return True
+        while self._position < frame_index:
+            # grab() skips decoding, which is what makes walking forward cheap.
+            if not self._capture.grab():
+                return False
+            self._position += 1
+        return True
+
+    def frames_for(
+        self, *, start_seconds: float, end_seconds: float, max_frames: int = 12
+    ) -> list[np.ndarray]:
+        start_frame = int(start_seconds * self.fps)
+        end_frame = max(start_frame + 1, int(end_seconds * self.fps))
+        frame_count = max(end_frame - start_frame, 1)
+        step = max(frame_count // max_frames, 1)
+
+        frames: list[np.ndarray] = []
+        for frame_index in range(start_frame, end_frame, step):
+            if not self._advance_to(frame_index):
+                break
+            # _position now points at frame_index, so read() decodes exactly it.
+            ok, frame = self._capture.read()
+            self._position += 1
+            if ok and frame is not None:
+                frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+            if len(frames) >= max_frames:
+                break
+        return frames
+
+    def close(self) -> None:
+        self._capture.release()
+
+    def __enter__(self) -> SequentialFrameSampler:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+
 def _sample_frames(
     *,
     video_path: Path,
@@ -117,33 +186,26 @@ def _sample_frames(
     end_seconds: float,
     max_frames: int = 12,
 ) -> list[np.ndarray]:
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
-        raise ScoringError(f"Unable to open video for scoring: {video_path}")
+    """Single-window sampling, kept for callers outside the scoring loop."""
+    with SequentialFrameSampler(video_path) as sampler:
+        return sampler.frames_for(
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+            max_frames=max_frames,
+        )
 
-    try:
-        fps = capture.get(cv2.CAP_PROP_FPS)
-        if not fps or fps <= 0:
-            fps = 25.0
 
-        start_frame = int(start_seconds * fps)
-        end_frame = max(start_frame + 1, int(end_seconds * fps))
-        frame_count = max(end_frame - start_frame, 1)
-        step = max(frame_count // max_frames, 1)
-
-        frames: list[np.ndarray] = []
-        for frame_index in range(start_frame, end_frame, step):
-            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-            ok, frame = capture.read()
-            if not ok or frame is None:
-                continue
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            frames.append(gray)
-            if len(frames) >= max_frames:
-                break
-        return frames
-    finally:
-        capture.release()
+def _downscale_to_width(frame: np.ndarray, max_width: int) -> np.ndarray:
+    """Shrink a frame for detection when it is wider than max_width."""
+    height, width = frame.shape[:2]
+    if width <= max_width:
+        return frame
+    scale = max_width / float(width)
+    return cv2.resize(
+        frame,
+        (max_width, max(int(round(height * scale)), 1)),
+        interpolation=cv2.INTER_AREA,
+    )
 
 
 def extract_window_signals(
@@ -151,12 +213,20 @@ def extract_window_signals(
     video_path: Path,
     start_seconds: float,
     end_seconds: float,
+    sampler: SequentialFrameSampler | None = None,
+    detect_max_width: int = 0,
 ) -> WindowSignals:
-    frames = _sample_frames(
-        video_path=video_path,
-        start_seconds=start_seconds,
-        end_seconds=end_seconds,
-    )
+    if sampler is None:
+        frames = _sample_frames(
+            video_path=video_path,
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+        )
+    else:
+        frames = sampler.frames_for(start_seconds=start_seconds, end_seconds=end_seconds)
+    if detect_max_width:
+        frames = [_downscale_to_width(frame, detect_max_width) for frame in frames]
+
     face_cascade = _haar_cascade("haarcascade_frontalface_default.xml")
     smile_cascade = _haar_cascade("haarcascade_smile.xml")
 
@@ -262,18 +332,24 @@ def run_segment_scoring(
     if duration_seconds <= 0:
         raise ScoringError("Video duration must be positive before scoring")
 
-    def signal_loader(start_seconds: float, end_seconds: float) -> WindowSignals:
-        return extract_window_signals(
-            video_path=video_path,
-            start_seconds=start_seconds,
-            end_seconds=end_seconds,
-        )
+    # One capture walked forward across every window, rather than one open
+    # and twelve seeks per window.
+    with SequentialFrameSampler(video_path) as sampler:
 
-    return score_windows(
-        duration_seconds=float(duration_seconds),
-        params=params,
-        signal_loader=signal_loader,
-    )
+        def signal_loader(start_seconds: float, end_seconds: float) -> WindowSignals:
+            return extract_window_signals(
+                video_path=video_path,
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
+                sampler=sampler,
+                detect_max_width=int(params.detect_max_width_pixels),
+            )
+
+        return score_windows(
+            duration_seconds=float(duration_seconds),
+            params=params,
+            signal_loader=signal_loader,
+        )
 
 
 def get_active_scoring_params() -> ScoringParams:

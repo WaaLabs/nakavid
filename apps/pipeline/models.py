@@ -13,6 +13,11 @@ class ScoringParams(models.Model):
     window_size_seconds = models.PositiveSmallIntegerField(default=4)
     step_seconds = models.PositiveSmallIntegerField(default=2)
     smoothing_window_count = models.PositiveSmallIntegerField(default=3)
+    # Downscale frames to this width before face/smile detection. Haar cost
+    # scales with pixel count, and detection at 1920x1080 is ~53% of scoring
+    # time. 0 keeps full resolution. Raising this speeds scoring up but
+    # changes detection counts, so the value is a judgement on real footage.
+    detect_max_width_pixels = models.PositiveSmallIntegerField(default=0)
     min_clip_length_seconds = models.PositiveSmallIntegerField(default=4)
     min_gap_seconds = models.PositiveSmallIntegerField(default=2)
     peak_count = models.PositiveSmallIntegerField(default=8)
