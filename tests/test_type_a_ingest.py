@@ -291,7 +291,7 @@ def test_type_a_ingest_get_renders_form(authenticated_client):
     response = client.get(reverse("type-a-ingest"))
 
     assert response.status_code == 200
-    assert b"Upload a recording" in response.content
+    assert b"Upload a long recording" in response.content
     assert b'id="drop-zone"' in response.content
 
 

@@ -9,7 +9,7 @@ User = get_user_model()
 class Video(models.Model):
     class VideoType(models.TextChoices):
         TYPE_A = "type_a", "Long recording"
-        TYPE_B = "type_b", "Short clip"
+        TYPE_B = "type_b", "Short recording"
 
     class Orientation(models.TextChoices):
         LANDSCAPE = "landscape", "Landscape"
@@ -39,7 +39,7 @@ class Video(models.Model):
 
     @property
     def is_long_recording(self) -> bool:
-        """Long recordings get a timeline view; short clips are already usable."""
+        """Long recordings get split into clips; short ones are used as they are."""
         return self.video_type == Video.VideoType.TYPE_A
 
     def __str__(self) -> str:

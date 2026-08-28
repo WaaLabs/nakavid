@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Recordings — NakaVid{% endblock %}
-{% block heading %}Recordings{% endblock %}
+{% block title %}Long recordings — NakaVid{% endblock %}
+{% block heading %}Long recordings{% endblock %}
 {% block intro %}
-<p class="intro">Long recordings, from which highlight clips are extracted. Playback is auth-gated through the Caddy stream handoff.</p>
+<p class="intro">Long recordings, which the pipeline splits into clips. Short recordings skip extraction and appear under Clips.</p>
 {% endblock %}
 
 {% block content %}
@@ -49,6 +49,6 @@
   {% endfor %}
 </div>
 {% else %}
-<p class="empty">No recordings match the current filters.</p>
+<p class="empty">No long recordings match the current filters.</p>
 {% endif %}
 {% endblock %}
