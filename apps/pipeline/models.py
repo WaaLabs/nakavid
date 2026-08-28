@@ -14,7 +14,12 @@ class ScoringParams(models.Model):
     step_seconds = models.PositiveSmallIntegerField(default=2)
     smoothing_window_count = models.PositiveSmallIntegerField(default=3)
     min_clip_length_seconds = models.PositiveSmallIntegerField(default=4)
-    min_gap_seconds = models.PositiveSmallIntegerField(default=2)
+    # How long an extracted clip should be. Was a hard-coded +/-3s around the
+    # peak, which pinned every clip to ~6s regardless of settings.
+    target_clip_length_seconds = models.PositiveSmallIntegerField(default=30)
+    # Silence between clips. At 2s, two peaks ~10s apart both survived and the
+    # output read as one long run chopped up.
+    min_gap_seconds = models.PositiveSmallIntegerField(default=15)
     peak_count = models.PositiveSmallIntegerField(default=8)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -8,8 +8,6 @@ from apps.library.models import Video
 from apps.library.storage_paths import HIGHLIGHTS_PREFIX, slug_segment
 from apps.pipeline.models import ScoringParams
 
-CLIP_EXPAND_SECONDS = 3.0
-
 
 class ClipExtractionError(RuntimeError):
     """Raised when clip extraction cannot complete."""
@@ -38,9 +36,16 @@ def _expand_segment(
     center_seconds: float,
     duration_seconds: float,
     min_length_seconds: float,
+    target_length_seconds: float,
 ) -> tuple[float, float]:
-    start_seconds = center_seconds - CLIP_EXPAND_SECONDS
-    end_seconds = center_seconds + CLIP_EXPAND_SECONDS
+    """Grow a peak outward to the configured clip length.
+
+    The half-width used to be the module constant CLIP_EXPAND_SECONDS = 3.0,
+    which pinned every clip to ~6s no matter how the params were set.
+    """
+    half_width = max(target_length_seconds, min_length_seconds) / 2.0
+    start_seconds = center_seconds - half_width
+    end_seconds = center_seconds + half_width
     start, end = _normalize_segment(
         start_seconds=start_seconds,
         end_seconds=end_seconds,
@@ -130,6 +135,7 @@ def select_clip_segments(
         return []
 
     min_length_seconds = float(params.min_clip_length_seconds)
+    target_length_seconds = float(params.target_clip_length_seconds)
     min_gap_seconds = float(params.min_gap_seconds)
     snap_radius = float(params.step_seconds)
     candidates = sorted(
@@ -147,6 +153,7 @@ def select_clip_segments(
             center_seconds=center,
             duration_seconds=duration_seconds,
             min_length_seconds=min_length_seconds,
+            target_length_seconds=target_length_seconds,
         )
         start = _snap_boundary(
             target_seconds=start,
