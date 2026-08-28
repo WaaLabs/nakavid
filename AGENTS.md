@@ -59,6 +59,9 @@ Do not touch `backups/`.
   /nakavid/highlights/{year}/{month}/{date}_{class}_{theme}/{stem}__clip_{NNN}.mp4 (+ .jpg)
   /nakavid/combines/{title}_{date}.mp4
   ```
+  Two derived files sit beside their source, marked by suffix so they are
+  recoverable from disk alone: `{stem}__web.mp4` (browser-safe H.264 rendition)
+  and `{stem}__sheet.jpg` (contact-sheet sprite used by scoring tuning).
 
 ## Code conventions
 

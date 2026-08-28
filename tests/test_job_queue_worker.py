@@ -18,7 +18,14 @@ User = get_user_model()
 
 
 @pytest.fixture
-def video(db):
+def storage_root(tmp_path, settings):
+    """Never let worker tests touch the real media root."""
+    settings.NAKAVID_STORAGE_ROOT = tmp_path
+    return tmp_path
+
+
+@pytest.fixture
+def video(db, storage_root):
     user = User.objects.create_user(username="worker-test", password="secret123!")
     return Video.objects.create(
         # Clip extraction reads the curve off the video, so give it one.
@@ -97,6 +104,7 @@ def test_process_job_marks_done_for_skeleton_handler(pending_job):
     with (
         patch("apps.pipeline.handlers.run_ffmpeg_trim"),
         patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+        patch("apps.pipeline.handlers.run_ffmpeg_contact_sheet"),
     ):
         process_job(pending_job)
 
@@ -136,6 +144,7 @@ def test_dispatch_job_routes_all_job_types(video):
         patch("apps.pipeline.handlers.run_ffmpeg_web_transcode"),
         patch("apps.pipeline.handlers.run_ffmpeg_trim"),
         patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+        patch("apps.pipeline.handlers.run_ffmpeg_contact_sheet"),
     ):
         scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
         with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):

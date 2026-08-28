@@ -429,6 +429,18 @@ def clip_thumbnail(request, clip_id: int):
 
 
 @login_required
+def video_contact_sheet(request, video_id: int):
+    """Serve a recording's contact-sheet sprite through the proxy handoff."""
+    video = get_object_or_404(Video, pk=video_id)
+    if not video.contact_sheet_path:
+        raise Http404("Video has no contact sheet")
+    response = HttpResponse()
+    response["X-Accel-Redirect"] = to_accel_redirect_path(video.contact_sheet_path)
+    response["Content-Type"] = ""
+    return response
+
+
+@login_required
 @require_http_methods(["GET", "POST"])
 def tag_manager(request):
     tag_form = TagForm(prefix="tag")
