@@ -30,6 +30,10 @@
   data-clips="{{ clips_json|escape }}"
 ></div>
 
+<p class="actions">
+  <a class="button secondary" href="{% url 'scoring-tuning' video.id %}">Tune scoring</a>
+</p>
+
 <section>
   <h2>Extracted clips</h2>
   {% if clips %}

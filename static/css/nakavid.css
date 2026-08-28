@@ -563,3 +563,104 @@ tbody tr:last-child td {
   color: var(--nv-text-faint);
   font-variant-numeric: normal;
 }
+
+/* ---------- scoring tuning ---------- */
+
+.tuning-layout {
+  display: grid;
+  gap: var(--nv-gap);
+  align-items: start;
+}
+
+@media (min-width: 62rem) {
+  .tuning-layout {
+    grid-template-columns: 19rem 1fr;
+  }
+  .tuning-form {
+    position: sticky;
+    top: 4.25rem;
+  }
+}
+
+.tuning-form h2:first-child {
+  margin-top: 0;
+}
+
+.tuning-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.tuning-fields input {
+  width: 100%;
+}
+
+.tuning-note {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--nv-border);
+}
+
+.tuning-results {
+  display: grid;
+  gap: var(--nv-gap);
+}
+
+/* A tile of the contact-sheet sprite, offset to the candidate's start. */
+.tuning-tile {
+  background-repeat: no-repeat;
+  background-color: #000;
+}
+
+.signal-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+}
+
+.signal-list div {
+  background: var(--nv-bg);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius-sm);
+  padding: 0.3rem 0.35rem;
+  text-align: center;
+}
+
+.signal-list dt {
+  color: var(--nv-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.65rem;
+}
+
+.signal-list dd {
+  margin: 0.1rem 0 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.badge--warn {
+  color: var(--nv-warning);
+  border-color: var(--nv-warning);
+  background: var(--nv-warning-bg);
+}
+
+.tuning-apply {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+
+.tuning-apply p {
+  margin: 0;
+  color: var(--nv-text-muted);
+  font-size: 0.875rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}

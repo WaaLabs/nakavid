@@ -172,3 +172,40 @@ class CombineBuilderSubmitForm(forms.Form):
             missing_label = ", ".join(str(item) for item in missing)
             raise forms.ValidationError(f"Unknown clip ids: {missing_label}")
         return clip_ids
+
+
+class ScoringTuningForm(forms.Form):
+    """Parameters that can be re-applied without re-scoring.
+
+    Everything here is arithmetic over signals already measured and stored.
+    Detection thresholds, window size and step are deliberately absent: they
+    change the signals themselves, so they need a full re-score.
+    """
+
+    face_weight = forms.DecimalField(min_value=0, max_value=1, decimal_places=3)
+    smile_weight = forms.DecimalField(min_value=0, max_value=1, decimal_places=3)
+    motion_weight = forms.DecimalField(min_value=0, max_value=1, decimal_places=3)
+    audio_weight = forms.DecimalField(min_value=0, max_value=1, decimal_places=3)
+    silence_penalty_weight = forms.DecimalField(min_value=0, max_value=1, decimal_places=3)
+    silence_rms_threshold = forms.DecimalField(min_value=0, max_value=1, decimal_places=4)
+    smoothing_window_count = forms.IntegerField(min_value=1, max_value=99)
+    target_clip_length_seconds = forms.IntegerField(min_value=1, max_value=600)
+    min_clip_length_seconds = forms.IntegerField(min_value=1, max_value=600)
+    min_gap_seconds = forms.IntegerField(min_value=0, max_value=600)
+    peak_count = forms.IntegerField(min_value=1, max_value=60)
+
+    def clean(self):
+        cleaned = super().clean()
+        weights = [
+            cleaned.get(name)
+            for name in ("face_weight", "smile_weight", "motion_weight", "audio_weight")
+        ]
+        if all(w is not None for w in weights) and sum(weights) <= 0:
+            raise forms.ValidationError(
+                "At least one of the face, smile, motion or audio weights must be above zero."
+            )
+        return cleaned
+
+    @classmethod
+    def initial_from(cls, params) -> dict:
+        return {name: getattr(params, name) for name in cls.base_fields}

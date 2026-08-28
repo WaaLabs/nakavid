@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Tuning — {{ video.title }} — NakaVid{% endblock %}
+{% block heading %}Scoring tuning{% endblock %}
+{% block intro %}
+<p class="intro">
+  {{ video.title }} · {{ window_count }} scored windows. Weights and selection re-run
+  against signals already measured, so previewing is instant — no re-score.
+</p>
+{% endblock %}
+
+{% block content %}
+{% if not has_curve %}
+<p class="empty">
+  This recording has no energy curve yet. Run the score stage before tuning.
+</p>
+{% else %}
+
+<div class="tuning-layout">
+  <form method="get" class="panel tuning-form">
+    <h2>Weights</h2>
+    <p class="hint">Relative contribution of each signal. Normalised by their sum.</p>
+    <div class="tuning-fields">
+      <div class="field"><label for="{{ form.face_weight.id_for_label }}">Face</label>{{ form.face_weight }}</div>
+      <div class="field"><label for="{{ form.smile_weight.id_for_label }}">Smile</label>{{ form.smile_weight }}</div>
+      <div class="field"><label for="{{ form.motion_weight.id_for_label }}">Motion</label>{{ form.motion_weight }}</div>
+      <div class="field"><label for="{{ form.audio_weight.id_for_label }}">Audio</label>{{ form.audio_weight }}</div>
+      <div class="field"><label for="{{ form.silence_penalty_weight.id_for_label }}">Silence penalty</label>{{ form.silence_penalty_weight }}</div>
+      <div class="field"><label for="{{ form.silence_rms_threshold.id_for_label }}">Silence threshold</label>{{ form.silence_rms_threshold }}</div>
+      <div class="field"><label for="{{ form.smoothing_window_count.id_for_label }}">Smoothing</label>{{ form.smoothing_window_count }}</div>
+    </div>
+
+    <h2>Selection</h2>
+    <p class="hint">How smoothed peaks become clips.</p>
+    <div class="tuning-fields">
+      <div class="field"><label for="{{ form.target_clip_length_seconds.id_for_label }}">Target length (s)</label>{{ form.target_clip_length_seconds }}</div>
+      <div class="field"><label for="{{ form.min_clip_length_seconds.id_for_label }}">Min length (s)</label>{{ form.min_clip_length_seconds }}</div>
+      <div class="field"><label for="{{ form.min_gap_seconds.id_for_label }}">Min gap (s)</label>{{ form.min_gap_seconds }}</div>
+      <div class="field"><label for="{{ form.peak_count.id_for_label }}">Max clips</label>{{ form.peak_count }}</div>
+    </div>
+
+    {% if form.errors %}<div class="errors">{{ form.errors }}</div>{% endif %}
+
+    <div class="actions">
+      <button type="submit">Preview</button>
+      <a class="button secondary" href="{% url 'scoring-tuning' video.id %}">Reset</a>
+    </div>
+
+    <p class="hint tuning-note">
+      Detection thresholds, window size and step are not here: they change the
+      measured signals, so they need a full re-score. Adjust those in
+      <a href="/admin/pipeline/scoringparams/">scoring params</a>.
+    </p>
+  </form>
+
+  <div class="tuning-results">
+    <section class="panel">
+      <h2>Signals across the recording</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Signal</th><th>Min</th><th>Mean</th><th>Max</th></tr>
+          </thead>
+          <tbody>
+            {% for row in summary %}
+            <tr>
+              <td>{{ row.name }}{% if row.is_flat %} <span class="badge badge--warn">flat</span>{% endif %}</td>
+              <td>{{ row.minimum|floatformat:3 }}</td>
+              <td>{{ row.mean|floatformat:3 }}</td>
+              <td>{{ row.maximum|floatformat:3 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">A signal marked flat never varies, so its weight only dilutes the others.</p>
+    </section>
+
+    <h2>{{ candidates|length }} candidate clip{{ candidates|length|pluralize }}</h2>
+    {% if not has_sheet %}
+    <p class="hint">No contact sheet yet, so previews have no stills. Queue a contact sheet job for this recording.</p>
+    {% endif %}
+
+    {% if candidates %}
+    <div class="card-grid">
+      {% for candidate in candidates %}
+      <article class="card">
+        {% if candidate.tile %}
+        <div
+          class="card__media tuning-tile"
+          style="background-image: url('{% url 'video-contact-sheet' video.id %}');
+                 background-position: {{ candidate.tile.offset_x }}px {{ candidate.tile.offset_y }}px;
+                 aspect-ratio: {{ candidate.tile.width }} / {{ candidate.tile.height }};"
+          role="img"
+          aria-label="Frame at {{ candidate.start_label }}"
+        ></div>
+        {% else %}
+        <div class="card__media card__media--empty">No still</div>
+        {% endif %}
+        <div class="card__body">
+          <h3 class="card__title">{{ candidate.position }}. {{ candidate.start_label }}–{{ candidate.end_label }}</h3>
+          <p class="card__meta">{{ candidate.length_seconds }}s long</p>
+          <dl class="signal-list">
+            <div><dt>faces</dt><dd>{{ candidate.signals.face_count|floatformat:2 }}</dd></div>
+            <div><dt>smiles</dt><dd>{{ candidate.signals.smile_ratio|floatformat:2 }}</dd></div>
+            <div><dt>motion</dt><dd>{{ candidate.signals.motion_energy|floatformat:3 }}</dd></div>
+            <div><dt>audio</dt><dd>{{ candidate.signals.audio_rms|floatformat:4 }}</dd></div>
+          </dl>
+          <div class="card__footer">
+            <span class="card__meta">peak window</span>
+            <span class="badge badge--score">{{ candidate.score }}</span>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="{% url 'scoring-tuning-apply' video.id %}" class="panel tuning-apply">
+      {% csrf_token %}
+      {% for field in form %}
+      <input type="hidden" name="{{ field.name }}" value="{{ field.value|default_if_none:'' }}" />
+      {% endfor %}
+      <p>
+        Saves these as a new scoring params set and rebuilds this recording's clips
+        from the stored curve. No re-score.
+      </p>
+      <button type="submit">Apply and rebuild clips</button>
+    </form>
+    {% else %}
+    <p class="empty">These settings select no clips. Try a shorter target length or a smaller minimum gap.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

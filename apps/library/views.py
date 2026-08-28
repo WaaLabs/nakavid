@@ -15,11 +15,12 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
-from apps.library.duration import format_duration_seconds
+from apps.library.duration import format_duration_seconds, format_timecode_seconds
 from apps.library.forms import (
     BulkTagForm,
     ClipsBrowserFilterForm,
     CombineBuilderSubmitForm,
+    ScoringTuningForm,
     SourceVideosFilterForm,
     TagCategoryForm,
     TagForm,
@@ -44,10 +45,17 @@ from apps.library.storage_paths import (
 )
 from apps.pipeline.enqueue import (
     STUB_DURATION_SECONDS,
+    enqueue_clip_extraction_job,
     enqueue_combine_export_job,
     enqueue_probe_job,
 )
-from apps.pipeline.models import Job
+from apps.pipeline.extraction import select_clip_segments
+from apps.pipeline.models import Job, ScoringParams
+from apps.pipeline.scoring import (
+    SIGNAL_NAMES,
+    get_active_scoring_params,
+    rescore_energy_curve,
+)
 
 
 def _write_uploaded_file(*, destination: Path, uploaded_file) -> None:
@@ -409,6 +417,146 @@ def clip_stream(request, clip_id: int):
     response["X-Accel-Redirect"] = to_accel_redirect_path(clip.storage_path)
     response["Content-Type"] = ""
     return response
+
+
+def _contact_sheet_tile(*, video: Video, seconds: float) -> dict[str, object] | None:
+    """Where a timestamp sits in the contact-sheet sprite.
+
+    Tile height mirrors ffmpeg's scale=WIDTH:-2, which rounds to an even
+    number, so the offsets line up with the rendered grid.
+    """
+    if not video.contact_sheet_path or not video.contact_sheet_interval_seconds:
+        return None
+    if not video.width or not video.height:
+        return None
+
+    index = int(seconds // video.contact_sheet_interval_seconds)
+    index = max(0, min(index, max(video.contact_sheet_tile_count - 1, 0)))
+    columns = max(video.contact_sheet_columns, 1)
+    tile_width = video.contact_sheet_tile_width
+    tile_height = int(round(tile_width * video.height / video.width / 2)) * 2
+    return {
+        "width": tile_width,
+        "height": tile_height,
+        "offset_x": -(index % columns) * tile_width,
+        "offset_y": -(index // columns) * tile_height,
+    }
+
+
+def _tuning_signal_summary(energy_curve: list[dict]) -> list[dict[str, object]]:
+    """Min/mean/max per signal — the fastest way to spot a dead signal."""
+    summary: list[dict[str, object]] = []
+    for name in SIGNAL_NAMES:
+        values = [float((point.get("signals") or {}).get(name, 0.0)) for point in energy_curve]
+        if not values:
+            continue
+        summary.append(
+            {
+                "name": name.replace("_", " "),
+                "minimum": min(values),
+                "mean": sum(values) / len(values),
+                "maximum": max(values),
+                "is_flat": max(values) - min(values) < 1e-6,
+            }
+        )
+    return summary
+
+
+@login_required
+def scoring_tuning(request, video_id: int):
+    """Re-rank a recording's clips under different weights, without re-scoring."""
+    video = get_object_or_404(Video.objects.filter(video_type=Video.VideoType.TYPE_A), pk=video_id)
+    active = get_active_scoring_params()
+
+    submitted = any(field in request.GET for field in ScoringTuningForm.base_fields)
+    form = ScoringTuningForm(request.GET if submitted else ScoringTuningForm.initial_from(active))
+
+    candidates: list[dict[str, object]] = []
+    curve: list[dict] = []
+    preview_params = active
+    if video.energy_curve and form.is_valid():
+        # An unsaved row: previewing must not disturb the active parameters.
+        preview_params = ScoringParams(**form.cleaned_data)
+        curve = rescore_energy_curve(energy_curve=video.energy_curve, params=preview_params)
+        selections = select_clip_segments(
+            energy_curve=curve,
+            params=preview_params,
+            duration_seconds=float(video.duration_seconds),
+        )
+        for position, selection in enumerate(selections, start=1):
+            peak = max(
+                selection.energy_curve, key=lambda point: point.get("score", 0.0), default={}
+            )
+            candidates.append(
+                {
+                    "position": position,
+                    "start_seconds": selection.start_seconds,
+                    "end_seconds": selection.end_seconds,
+                    "start_label": format_timecode_seconds(int(selection.start_seconds)),
+                    "end_label": format_timecode_seconds(int(selection.end_seconds)),
+                    "length_seconds": int(selection.end_seconds - selection.start_seconds),
+                    "score": int(round(selection.score)),
+                    "signals": (peak.get("signals") or {}),
+                    "tile": _contact_sheet_tile(video=video, seconds=selection.start_seconds),
+                }
+            )
+
+    return render(
+        request,
+        "library/scoring_tuning.html",
+        {
+            "video": video,
+            "form": form,
+            "candidates": candidates,
+            "summary": _tuning_signal_summary(video.energy_curve),
+            "has_curve": bool(video.energy_curve),
+            "has_sheet": bool(video.contact_sheet_path),
+            "active_params": active,
+            "window_count": len(video.energy_curve),
+        },
+    )
+
+
+@login_required
+@require_POST
+def scoring_tuning_apply(request, video_id: int):
+    """Save the previewed settings and rebuild this recording's clips.
+
+    Selection runs off the stored curve, so this re-extracts in seconds rather
+    than re-scoring. Detection thresholds are untouched by design.
+    """
+    video = get_object_or_404(Video.objects.filter(video_type=Video.VideoType.TYPE_A), pk=video_id)
+    form = ScoringTuningForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Those settings are not valid, so nothing was changed.")
+        return redirect("scoring-tuning", video_id=video.pk)
+    if not video.energy_curve:
+        messages.error(request, "This recording has not been scored yet.")
+        return redirect("scoring-tuning", video_id=video.pk)
+
+    active = get_active_scoring_params()
+    carried = {
+        field.name: getattr(active, field.name)
+        for field in ScoringParams._meta.fields
+        if field.name not in {"id", "created_at", "updated_at"}
+    }
+    carried.update(form.cleaned_data)
+
+    with transaction.atomic():
+        params = ScoringParams.objects.create(**carried)
+        video.energy_curve = rescore_energy_curve(energy_curve=video.energy_curve, params=params)
+        video.highlight_score = max(
+            (int(round(point.get("score", 0.0))) for point in video.energy_curve), default=0
+        )
+        video.save(update_fields=["energy_curve", "highlight_score", "updated_at"])
+        job = enqueue_clip_extraction_job(video=video, scoring_params_id=params.pk)
+
+    messages.success(
+        request,
+        f"Saved scoring params #{params.pk} and queued extraction job #{job.pk}. "
+        "Clips rebuild from the stored curve, so no re-score is needed.",
+    )
+    return redirect("queue-status")
 
 
 @login_required
