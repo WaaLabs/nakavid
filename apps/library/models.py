@@ -1,13 +1,15 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
+from apps.library.duration import format_duration_seconds, format_timecode_seconds
+
 User = get_user_model()
 
 
 class Video(models.Model):
     class VideoType(models.TextChoices):
-        TYPE_A = "type_a", "Type A"
-        TYPE_B = "type_b", "Type B"
+        TYPE_A = "type_a", "Long recording"
+        TYPE_B = "type_b", "Short recording"
 
     class Orientation(models.TextChoices):
         LANDSCAPE = "landscape", "Landscape"
@@ -34,6 +36,11 @@ class Video(models.Model):
     tags = models.ManyToManyField("Tag", related_name="videos", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def is_long_recording(self) -> bool:
+        """Long recordings get split into clips; short ones are used as they are."""
+        return self.video_type == Video.VideoType.TYPE_A
 
     def __str__(self) -> str:
         return self.title
@@ -89,6 +96,28 @@ class Clip(models.Model):
                 name="clip_highlight_score_range",
             ),
         ]
+
+    @property
+    def duration_seconds(self) -> int:
+        return int(self.end_seconds - self.start_seconds)
+
+    @property
+    def duration_label(self) -> str:
+        return format_duration_seconds(self.duration_seconds)
+
+    @property
+    def source_start_label(self) -> str:
+        """Where this clip starts in its source recording, as m:ss."""
+        return format_timecode_seconds(int(self.start_seconds))
+
+    @property
+    def source_end_label(self) -> str:
+        return format_timecode_seconds(int(self.end_seconds))
+
+    @property
+    def source_range_label(self) -> str:
+        """The clip's span in source timecode, for tracing it back."""
+        return f"{self.source_start_label}–{self.source_end_label}"
 
     def __str__(self) -> str:
         return f"{self.video.title} [{self.start_seconds}-{self.end_seconds}]"

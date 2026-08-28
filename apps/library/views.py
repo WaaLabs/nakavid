@@ -9,7 +9,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -407,6 +407,23 @@ def clip_stream(request, clip_id: int):
     clip = get_object_or_404(Clip.objects.select_related("video"), pk=clip_id)
     response = HttpResponse()
     response["X-Accel-Redirect"] = to_accel_redirect_path(clip.storage_path)
+    response["Content-Type"] = ""
+    return response
+
+
+@login_required
+def clip_thumbnail(request, clip_id: int):
+    """Serve a clip's thumbnail through the same auth-then-proxy handoff.
+
+    Thumbnails are stored under the media root, which has no public route, so
+    rendering thumbnail_path directly always 404'd. Hand the bytes to Caddy the
+    way clip_stream does rather than reading the file in Django.
+    """
+    clip = get_object_or_404(Clip.objects.select_related("video"), pk=clip_id)
+    if not clip.thumbnail_path:
+        raise Http404("Clip has no thumbnail")
+    response = HttpResponse()
+    response["X-Accel-Redirect"] = to_accel_redirect_path(clip.thumbnail_path)
     response["Content-Type"] = ""
     return response
 

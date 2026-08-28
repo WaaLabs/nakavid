@@ -101,7 +101,7 @@ def test_clips_browser_lists_clips(authenticated_client, sample_clips):
     content = response.content.decode()
     assert clip_a.video.title in content
     assert clip_b.video.title in content
-    assert "Highlight score: 80" in content
+    assert ">80</span>" in content  # score badge
 
 
 @pytest.mark.django_db
@@ -171,3 +171,62 @@ def test_to_accel_redirect_path_strips_nakavid_prefix():
     assert (
         to_accel_redirect_path("/nakavid/originals/2026/07/foo.mp4") == "/originals/2026/07/foo.mp4"
     )
+
+
+@pytest.mark.django_db
+def test_clip_thumbnail_requires_login(client, sample_clips):
+    clip_a, _clip_b = sample_clips
+
+    response = client.get(reverse("clip-thumbnail", args=[clip_a.id]))
+
+    assert response.status_code == 302
+    assert response["Location"].startswith("/accounts/login/")
+
+
+@pytest.mark.django_db
+def test_clip_thumbnail_returns_accel_redirect(authenticated_client, sample_clips):
+    """Thumbnails hand off to Caddy the same way clip playback does."""
+    client, _user = authenticated_client
+    clip_a, _clip_b = sample_clips
+    clip_a.thumbnail_path = "/nakavid/highlights/2026/07/20260701_a_animals/lesson_a__clip_001.jpg"
+    clip_a.save(update_fields=["thumbnail_path"])
+
+    response = client.get(reverse("clip-thumbnail", args=[clip_a.id]))
+
+    assert response.status_code == 200
+    assert response.content == b""
+    assert response["X-Accel-Redirect"] == to_accel_redirect_path(clip_a.thumbnail_path)
+
+
+@pytest.mark.django_db
+def test_clip_thumbnail_404s_when_the_clip_has_none(authenticated_client, sample_clips):
+    client, _user = authenticated_client
+    clip_a, _clip_b = sample_clips
+    assert clip_a.thumbnail_path == ""
+
+    response = client.get(reverse("clip-thumbnail", args=[clip_a.id]))
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_clip_card_shows_source_timecode(authenticated_client, sample_clips):
+    """The clip's span in the source recording, so it can be traced back."""
+    client, _user = authenticated_client
+    clip_a, _clip_b = sample_clips
+    clip_a.start_seconds = Decimal("86.000")
+    clip_a.end_seconds = Decimal("94.000")
+    clip_a.save(update_fields=["start_seconds", "end_seconds"])
+
+    response = client.get(reverse("clips-browser"))
+
+    assert response.status_code == 200
+    assert "1:26–1:34" in response.content.decode()
+
+
+def test_timecode_renders_zero_as_a_position_not_a_blank():
+    from apps.library.duration import format_timecode_seconds
+
+    assert format_timecode_seconds(0) == "0:00"
+    assert format_timecode_seconds(86) == "1:26"
+    assert format_timecode_seconds(3700) == "1:01:40"

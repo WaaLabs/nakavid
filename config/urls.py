@@ -7,6 +7,7 @@ from django.views.generic import RedirectView
 from apps.library.views import (
     bulk_tagging,
     clip_stream,
+    clip_thumbnail,
     clips_browser,
     combine_builder,
     combine_builder_submit,
@@ -42,6 +43,7 @@ urlpatterns = [
     path("session/", session_info, name="session-info"),
     path("clips/", clips_browser, name="clips-browser"),
     path("clips/<int:clip_id>/stream/", clip_stream, name="clip-stream"),
+    path("clips/<int:clip_id>/thumbnail/", clip_thumbnail, name="clip-thumbnail"),
     path("combine-builder/", combine_builder, name="combine-builder"),
     path("combine-builder/submit/", combine_builder_submit, name="combine-builder-submit"),
     path("tags/", tag_manager, name="tag-manager"),

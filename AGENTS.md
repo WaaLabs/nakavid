@@ -76,6 +76,7 @@ Two convention sets, by side of the seam:
 ## Domain language (use these exact terms in code, UI, and docs)
 
 - **Video** — a source file. **Type A** = long recording (40–90 min, landscape; archival + extraction). **Type B** = in-the-moment clip (<5 min, mixed orientation; already usable).
+  - *Type A/Type B stay the terms in **code, DB values, and docs**.* In the **UI** they read as **“Long recording”** and **“Short recording”** — “Type A” means nothing to an operator. Both types are *recordings*; length is what decides whether the pipeline splits one. **“Clip” is reserved for the output of extraction**, so a Type B source is a short *recording*, never a short *clip* — even though it is itself a clip row. The `VideoType` choice labels carry the translation; the stored values remain `type_a`/`type_b`.
 - **Clip** — a trimmed segment with start/end timestamps. Type A clips are pipeline-extracted; a Type B video is itself a clip (start = 0).
 - **Highlight score** — 0–100 from face count, smile, motion, audio energy. Drives sorting; consumed downstream by Nebla for montage selection.
 - **Energy curve** — per-window scores stored on a clip (not just the headline number). NakaVid **computes and stores** it; **Nebla consumes** it. Preserve it — it is the handoff to the montage product.

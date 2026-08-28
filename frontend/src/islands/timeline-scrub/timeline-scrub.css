@@ -1,3 +1,10 @@
+/* timeline-scrub island.
+ *
+ * Colours come from the shared tokens in static/css/nakavid.css so the
+ * island matches the Django page it mounts into instead of carrying its
+ * own palette.
+ */
+
 .timeline-scrub {
   display: grid;
   gap: 0.75rem;
@@ -9,15 +16,15 @@
   flex-wrap: wrap;
   gap: 1rem;
   font-size: 0.875rem;
-  color: #cbd5e1;
+  color: var(--nv-text-muted);
 }
 
 .timeline-scrub__track {
   position: relative;
   height: 3rem;
-  border-radius: 0.5rem;
-  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-  border: 1px solid #334155;
+  border-radius: var(--nv-radius);
+  background: linear-gradient(180deg, var(--nv-bg) 0%, var(--nv-surface-raised) 100%);
+  border: 1px solid var(--nv-border);
   overflow: hidden;
 }
 
@@ -27,13 +34,13 @@
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: #38bdf8;
+  background: var(--nv-accent);
   pointer-events: none;
   z-index: 20;
 }
 
 .timeline-scrub__empty {
   margin: 0;
-  color: #94a3b8;
+  color: var(--nv-text-muted);
   font-size: 0.875rem;
 }

@@ -121,7 +121,7 @@ def test_type_b_ingest_get_renders_form(authenticated_client):
     response = client.get(reverse("type-b-ingest"))
 
     assert response.status_code == 200
-    assert b"Type B ingest" in response.content
+    assert b"Upload a short recording" in response.content
     assert b'id="drop-zone"' in response.content
 
 

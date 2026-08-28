@@ -1,109 +1,68 @@
-<!DOCTYPE html>
+{% extends "base.html" %}
 {% load static %}
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>{{ video.title }} — Lesson View — NakaVid</title>
-    <link rel="stylesheet" href="{% static 'islands/assets/timeline-scrub.css' %}" />
-    <style>
-      body {
-        font-family: system-ui, sans-serif;
-        margin: 2rem auto;
-        max-width: 72rem;
-        padding: 0 1rem;
-        background: #0b1220;
-        color: #e2e8f0;
-      }
-      nav {
-        margin-bottom: 1.5rem;
-      }
-      nav a {
-        margin-right: 1rem;
-        color: #93c5fd;
-      }
-      .meta {
-        color: #94a3b8;
-        margin-bottom: 1rem;
-      }
-      .player-wrap {
-        background: #000;
-        border-radius: 0.5rem;
-        overflow: hidden;
-      }
-      video {
-        width: 100%;
-        display: block;
-        max-height: 70vh;
-        background: #000;
-      }
-      .clip-list {
-        margin-top: 1.5rem;
-      }
-      .clip-list h2 {
-        font-size: 1rem;
-        margin-bottom: 0.5rem;
-      }
-      .clip-list ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: grid;
-        gap: 0.5rem;
-      }
-      .clip-list li {
-        font-size: 0.875rem;
-        color: #cbd5e1;
-      }
-    </style>
-  </head>
-  <body>
-    <nav>
-      <a href="{% url 'source-videos' %}">Source Videos</a>
-      <a href="{% url 'clips-browser' %}">Clips Browser</a>
-      <a href="{% url 'queue-status' %}">Queue Status</a>
-      <a href="{% url 'type-a-ingest' %}">Type A ingest</a>
-      <a href="{% url 'type-b-ingest' %}">Type B ingest</a>
-    </nav>
 
-    <h1>{{ video.title }}</h1>
-    <p class="meta">
-      Class: {{ video.class_name }} · Theme: {{ video.theme }} ·
-      Date: {{ video.recorded_at|date:"Y-m-d" }}
-      {% if duration_label %} · Duration: {{ duration_label }}{% endif %}
-    </p>
+{% block title %}{{ video.title }} — NakaVid{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'islands/assets/timeline-scrub.css' %}" />
+{% endblock %}
+{% block heading %}{{ video.title }}{% endblock %}
+{% block intro %}
+<p class="intro">
+  {{ video.class_name }} · {{ video.theme }} · {{ video.recorded_at|date:"Y-m-d" }}
+  {% if duration_label %} · {{ duration_label }}{% endif %}
+</p>
+{% endblock %}
 
-    <div class="player-wrap">
-      <video
-        id="lesson-source-player"
-        controls
-        preload="metadata"
-        src="{% url 'video-stream' video.id %}"
-      ></video>
-    </div>
+{% block content %}
+<div class="player-wrap">
+  <video
+    id="lesson-source-player"
+    controls
+    preload="metadata"
+    src="{% url 'video-stream' video.id %}"
+  ></video>
+</div>
 
-    <div
-      id="lesson-timeline-island"
-      data-duration-seconds="{{ video.duration_seconds }}"
-      data-player-selector="{{ player_selector }}"
-      data-clips="{{ clips_json|escape }}"
-    ></div>
+<div
+  id="lesson-timeline-island"
+  data-duration-seconds="{{ video.duration_seconds }}"
+  data-player-selector="{{ player_selector }}"
+  data-clips="{{ clips_json|escape }}"
+></div>
 
-    <section class="clip-list">
-      <h2>Extracted clips</h2>
-      {% if clips %}
-      <ul>
-        {% for clip in clips %}
-        <li>
-          #{{ clip.id }} · {{ clip.start_seconds }}s–{{ clip.end_seconds }}s ·
-          score {{ clip.highlight_score }}
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p class="meta">No extracted clips yet.</p>
-      {% endif %}
-    </section>
+<section>
+  <h2>Extracted clips</h2>
+  {% if clips %}
+  <div class="card-grid">
+    {% for clip in clips %}
+    <article class="card">
+      <div class="card__media">
+        <video
+          controls
+          preload="none"
+          {% if clip.thumbnail_path %}poster="{% url 'clip-thumbnail' clip.id %}"{% endif %}
+          src="{% url 'clip-stream' clip.id %}"
+        ></video>
+      </div>
+      <div class="card__body">
+        <h3 class="card__title">Clip {{ forloop.counter }}</h3>
+        <p class="card__meta card__timecode">
+          {{ clip.source_range_label }} <span class="card__timecode-of">in source</span>
+        </p>
+        <div class="card__footer">
+          <span class="card__meta">{{ clip.duration_label }}</span>
+          <span class="badge badge--score">{{ clip.highlight_score }}</span>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">No extracted clips yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
 
-    <script type="module" src="{% static 'islands/timeline-scrub.js' %}"></script>
-  </body>
-</html>
+{% block scripts %}
+<script type="module" src="{% static 'islands/timeline-scrub.js' %}"></script>
+{% endblock %}

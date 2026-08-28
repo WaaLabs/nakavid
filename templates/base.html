@@ -1,0 +1,49 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}NakaVid{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/nakavid.css' %}" />
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    {% url 'clips-browser' as clips_url %}
+    <nav class="nv-nav">
+      <div class="nv-nav__inner">
+        <a class="nv-nav__brand" href="{{ clips_url }}">NakaVid</a>
+        {% with current=request.resolver_match.url_name %}
+        <div class="nv-nav__links">
+          <a href="{% url 'clips-browser' %}" {% if current == 'clips-browser' %}aria-current="page"{% endif %}>Clips</a>
+          <a href="{% url 'source-videos' %}" {% if current == 'source-videos' or current == 'lesson-view' %}aria-current="page"{% endif %}>Long recordings</a>
+          <a href="{% url 'combine-builder' %}" {% if current == 'combine-builder' %}aria-current="page"{% endif %}>Combine</a>
+          <a href="{% url 'tag-manager' %}" {% if current == 'tag-manager' or current == 'tag-edit' %}aria-current="page"{% endif %}>Tags</a>
+          <a href="{% url 'bulk-tagging' %}" {% if current == 'bulk-tagging' %}aria-current="page"{% endif %}>Bulk tagging</a>
+          <a href="{% url 'queue-status' %}" {% if current == 'queue-status' %}aria-current="page"{% endif %}>Queue</a>
+          <a href="{% url 'type-a-ingest' %}" {% if current == 'type-a-ingest' %}aria-current="page"{% endif %}>Upload long</a>
+          <a href="{% url 'type-b-ingest' %}" {% if current == 'type-b-ingest' %}aria-current="page"{% endif %}>Upload short</a>
+        </div>
+        {% endwith %}
+      </div>
+    </nav>
+
+    <div class="nv-shell">
+      {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      <header class="nv-page-head">
+        <h1>{% block heading %}{% endblock %}</h1>
+        {% block intro %}{% endblock %}
+      </header>
+
+      {% block content %}{% endblock %}
+    </div>
+
+    {% block scripts %}{% endblock %}
+  </body>
+</html>
