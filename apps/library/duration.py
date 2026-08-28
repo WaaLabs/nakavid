@@ -40,3 +40,18 @@ def format_duration_seconds(seconds: int) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def format_timecode_seconds(seconds: int) -> str:
+    """Position within a recording, as m:ss (or h:mm:ss past an hour).
+
+    Unlike format_duration_seconds, zero renders as "0:00" rather than an
+    empty string — the start of a recording is a real position, not a
+    missing value.
+    """
+    clamped = max(int(seconds), 0)
+    hours, rem = divmod(clamped, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"

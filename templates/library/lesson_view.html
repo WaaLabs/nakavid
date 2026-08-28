@@ -46,8 +46,11 @@
       </div>
       <div class="card__body">
         <h3 class="card__title">Clip {{ forloop.counter }}</h3>
+        <p class="card__meta card__timecode">
+          {{ clip.source_range_label }} <span class="card__timecode-of">in source</span>
+        </p>
         <div class="card__footer">
-          <span class="card__meta">{{ clip.start_seconds|floatformat:0 }}s–{{ clip.end_seconds|floatformat:0 }}s · {{ clip.duration_label }}</span>
+          <span class="card__meta">{{ clip.duration_label }}</span>
           <span class="badge badge--score">{{ clip.highlight_score }}</span>
         </div>
       </div>

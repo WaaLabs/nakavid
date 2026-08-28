@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
-from apps.library.duration import format_duration_seconds
+from apps.library.duration import format_duration_seconds, format_timecode_seconds
 
 User = get_user_model()
 
@@ -104,6 +104,20 @@ class Clip(models.Model):
     @property
     def duration_label(self) -> str:
         return format_duration_seconds(self.duration_seconds)
+
+    @property
+    def source_start_label(self) -> str:
+        """Where this clip starts in its source recording, as m:ss."""
+        return format_timecode_seconds(int(self.start_seconds))
+
+    @property
+    def source_end_label(self) -> str:
+        return format_timecode_seconds(int(self.end_seconds))
+
+    @property
+    def source_range_label(self) -> str:
+        """The clip's span in source timecode, for tracing it back."""
+        return f"{self.source_start_label}–{self.source_end_label}"
 
     def __str__(self) -> str:
         return f"{self.video.title} [{self.start_seconds}-{self.end_seconds}]"

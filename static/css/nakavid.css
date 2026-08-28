@@ -550,3 +550,16 @@ tbody tr:last-child td {
   border-color: var(--nv-accent);
   color: var(--nv-text);
 }
+
+/* Source timecode: where a clip sits in its recording. Tabular figures so
+ * the ranges line up down a column of cards. */
+.card__timecode {
+  font-variant-numeric: tabular-nums;
+  color: var(--nv-text);
+  font-size: 0.8125rem;
+}
+
+.card__timecode-of {
+  color: var(--nv-text-faint);
+  font-variant-numeric: normal;
+}

@@ -51,6 +51,9 @@
         {% endif %}
       </h2>
       <p class="card__meta">{{ clip.video.class_name }} · {{ clip.video.theme }}</p>
+      <p class="card__meta card__timecode">
+        {{ clip.source_range_label }} <span class="card__timecode-of">in source</span>
+      </p>
       <div class="card__footer">
         <span class="card__meta">{{ clip.video.recorded_at|date:"Y-m-d" }} · {{ clip.duration_label }}</span>
         <span class="badge badge--score">{{ clip.highlight_score }}</span>
