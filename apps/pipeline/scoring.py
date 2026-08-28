@@ -410,6 +410,36 @@ def score_windows(
     )
 
 
+SIGNAL_NAMES = ("face_count", "smile_ratio", "motion_energy", "audio_rms")
+
+
+def rescore_energy_curve(*, energy_curve: list[dict], params: ScoringParams) -> list[dict]:
+    """Re-apply weights to already-measured signals — no decoding required.
+
+    Scoring stores the raw per-window signals, and weights are applied
+    afterwards. So changing weights, or the smoothing width, is arithmetic over
+    stored numbers rather than a 30-minute re-scan. Anything that changes the
+    signals themselves (detection thresholds, window size, step) is not in this
+    set and does need a re-score.
+    """
+    raw_scores: list[float] = []
+    for point in energy_curve:
+        stored = point.get("signals") or {}
+        signals = WindowSignals(
+            face_count=float(stored.get("face_count", 0.0)),
+            smile_ratio=float(stored.get("smile_ratio", 0.0)),
+            motion_energy=float(stored.get("motion_energy", 0.0)),
+            audio_rms=float(stored.get("audio_rms", 0.0)),
+        )
+        raw_scores.append(aggregate_window_score(signals=signals, params=params))
+
+    smoothed = smooth_scores(raw_scores, window_size=max(1, int(params.smoothing_window_count)))
+    return [
+        {**point, "score": round(score, 2)}
+        for point, score in zip(energy_curve, smoothed, strict=True)
+    ]
+
+
 def run_segment_scoring(
     *,
     video_path: Path,
