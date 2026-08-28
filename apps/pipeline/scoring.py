@@ -195,8 +195,43 @@ def _sample_frames(
         )
 
 
-def _count_smiles_in_faces(*, frame: np.ndarray, faces, smile_cascade) -> int:
-    """Count smiles inside detected faces, not anywhere in the frame.
+@dataclass(frozen=True)
+class DetectionSettings:
+    """Haar thresholds, lifted out of the code so they can be tuned."""
+
+    face_scale_factor: float
+    face_min_neighbors: int
+    smile_scale_factor: float
+    smile_min_neighbors: int
+    smile_roi_min_height: int
+    max_width: int
+
+    @classmethod
+    def from_params(cls, params: ScoringParams) -> DetectionSettings:
+        return cls(
+            face_scale_factor=float(params.face_scale_factor),
+            face_min_neighbors=int(params.face_min_neighbors),
+            smile_scale_factor=float(params.smile_scale_factor),
+            smile_min_neighbors=int(params.smile_min_neighbors),
+            smile_roi_min_height=int(params.smile_roi_min_height_pixels),
+            max_width=int(params.detect_max_width_pixels),
+        )
+
+
+DEFAULT_DETECTION = DetectionSettings(
+    face_scale_factor=1.1,
+    face_min_neighbors=4,
+    smile_scale_factor=1.3,
+    smile_min_neighbors=10,
+    smile_roi_min_height=64,
+    max_width=1920,
+)
+
+
+def _count_smiles_in_faces(
+    *, frame: np.ndarray, faces, smile_cascade, settings: DetectionSettings
+) -> int:
+    """Count smiling faces — at most one per face, and only inside faces.
 
     The cascade used to run over the whole frame, which is a misuse — it fires
     on any mouth-like texture. Measured over 40 frames of real footage, 80 of
@@ -212,8 +247,35 @@ def _count_smiles_in_faces(*, frame: np.ndarray, faces, smile_cascade) -> int:
         mouth_region = frame[y + height // 2 : y + height, x : x + width]
         if mouth_region.size == 0:
             continue
-        total += len(smile_cascade.detectMultiScale(mouth_region, scaleFactor=1.7, minNeighbors=20))
+        mouth_region = _upscale_to_height(mouth_region, settings.smile_roi_min_height)
+        detections = smile_cascade.detectMultiScale(
+            mouth_region,
+            scaleFactor=settings.smile_scale_factor,
+            minNeighbors=settings.smile_min_neighbors,
+        )
+        # One face contributes at most one smile. The cascade returns several
+        # overlapping boxes for a single mouth, which is what pushed smile_ratio
+        # above 1.0 — more smiles than faces in the same frame.
+        if len(detections):
+            total += 1
     return total
+
+
+def _upscale_to_height(region: np.ndarray, min_height: int) -> np.ndarray:
+    """Enlarge a small mouth crop so the cascade has pixels to work with.
+
+    Mouth regions run ~45px tall at a median face size, near the limit of what
+    the cascade resolves. Enlarging measurably raises the hit rate.
+    """
+    height, width = region.shape[:2]
+    if not min_height or height >= min_height or height == 0:
+        return region
+    scale = min_height / float(height)
+    return cv2.resize(
+        region,
+        (max(int(round(width * scale)), 1), min_height),
+        interpolation=cv2.INTER_CUBIC,
+    )
 
 
 def _downscale_to_width(frame: np.ndarray, max_width: int) -> np.ndarray:
@@ -235,7 +297,7 @@ def extract_window_signals(
     start_seconds: float,
     end_seconds: float,
     sampler: SequentialFrameSampler | None = None,
-    detect_max_width: int = 0,
+    settings: DetectionSettings = DEFAULT_DETECTION,
 ) -> WindowSignals:
     if sampler is None:
         frames = _sample_frames(
@@ -245,8 +307,8 @@ def extract_window_signals(
         )
     else:
         frames = sampler.frames_for(start_seconds=start_seconds, end_seconds=end_seconds)
-    if detect_max_width:
-        frames = [_downscale_to_width(frame, detect_max_width) for frame in frames]
+    if settings.max_width:
+        frames = [_downscale_to_width(frame, settings.max_width) for frame in frames]
 
     face_cascade = _haar_cascade("haarcascade_frontalface_default.xml")
     smile_cascade = _haar_cascade("haarcascade_smile.xml")
@@ -257,9 +319,15 @@ def extract_window_signals(
     previous_frame: np.ndarray | None = None
 
     for frame in frames:
-        faces = face_cascade.detectMultiScale(frame, scaleFactor=1.1, minNeighbors=4)
+        faces = face_cascade.detectMultiScale(
+            frame,
+            scaleFactor=settings.face_scale_factor,
+            minNeighbors=settings.face_min_neighbors,
+        )
         face_total += len(faces)
-        smile_total += _count_smiles_in_faces(frame=frame, faces=faces, smile_cascade=smile_cascade)
+        smile_total += _count_smiles_in_faces(
+            frame=frame, faces=faces, smile_cascade=smile_cascade, settings=settings
+        )
 
         if previous_frame is not None:
             diff = cv2.absdiff(frame, previous_frame)
@@ -351,6 +419,8 @@ def run_segment_scoring(
     if duration_seconds <= 0:
         raise ScoringError("Video duration must be positive before scoring")
 
+    detection = DetectionSettings.from_params(params)
+
     # One capture walked forward across every window, rather than one open
     # and twelve seeks per window.
     with SequentialFrameSampler(video_path) as sampler:
@@ -361,7 +431,7 @@ def run_segment_scoring(
                 start_seconds=start_seconds,
                 end_seconds=end_seconds,
                 sampler=sampler,
-                detect_max_width=int(params.detect_max_width_pixels),
+                settings=detection,
             )
 
         return score_windows(
