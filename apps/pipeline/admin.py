@@ -22,6 +22,7 @@ class ScoringParamsAdmin(admin.ModelAdmin):
         "motion_weight",
         "audio_weight",
         "window_size_seconds",
+        "target_clip_length_seconds",
         "peak_count",
         "updated_at",
     )
@@ -55,8 +56,18 @@ class ScoringParamsAdmin(admin.ModelAdmin):
         (
             "Clip selection",
             {
-                "description": "How smoothed peaks become non-overlapping clips.",
-                "fields": ("min_clip_length_seconds", "min_gap_seconds", "peak_count"),
+                "description": (
+                    "How smoothed peaks become non-overlapping clips. "
+                    "Target length sets how long each clip runs; minimum gap sets "
+                    "how much silence must separate two of them, which is what stops "
+                    "a single busy stretch being chopped into several near-adjacent clips."
+                ),
+                "fields": (
+                    "target_clip_length_seconds",
+                    "min_clip_length_seconds",
+                    "min_gap_seconds",
+                    "peak_count",
+                ),
             },
         ),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),

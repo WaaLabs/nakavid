@@ -59,6 +59,7 @@ def test_select_clip_segments_prefers_non_overlapping_peaks():
     params.peak_count = 2
     params.min_gap_seconds = 4
     params.min_clip_length_seconds = 4
+    params.target_clip_length_seconds = 6
 
     energy_curve = [
         {"start": 0.0, "end": 4.0, "score": 20.0, "signals": {"motion_energy": 0.5}},
@@ -93,6 +94,10 @@ def test_handle_clip_extraction_creates_highlight_rows_and_inherits_tags(storage
         created_by=user,
     )
     params = ScoringParams.objects.get()
+    # Peaks here are ~20s apart, so keep clips short enough to stay distinct.
+    params.target_clip_length_seconds = 6
+    params.min_gap_seconds = 2
+    params.save(update_fields=["target_clip_length_seconds", "min_gap_seconds"])
     job = Job.objects.create(
         video=video,
         job_type=Job.JobType.CLIP_EXTRACTION,
@@ -227,3 +232,54 @@ def test_rescoring_an_extracted_video_does_not_corrupt_a_highlight(storage_root,
     scoring_clip = Clip.objects.get(video=video, storage_path=video.source_path)
     assert scoring_clip.energy_curve == whole_video_curve
     assert Job.objects.filter(video=video, job_type=Job.JobType.CLIP_EXTRACTION).exists()
+
+
+@pytest.mark.django_db
+def test_target_clip_length_drives_the_clip_length():
+    """Clip length must follow the parameter, not a hard-coded constant.
+
+    It was pinned at ~6s by CLIP_EXPAND_SECONDS = 3.0, so every setting of
+    these params produced the same short clips.
+    """
+    energy_curve = [
+        {"start": 100.0, "end": 104.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
+    ]
+    params = ScoringParams.objects.get()
+    params.peak_count = 1
+    params.min_clip_length_seconds = 4
+
+    lengths = {}
+    for target in (10, 30, 60):
+        params.target_clip_length_seconds = target
+        clips = select_clip_segments(
+            energy_curve=energy_curve, params=params, duration_seconds=600.0
+        )
+        assert len(clips) == 1
+        lengths[target] = clips[0].end_seconds - clips[0].start_seconds
+
+    assert lengths[10] == pytest.approx(10.0, abs=2.0)
+    assert lengths[30] == pytest.approx(30.0, abs=2.0)
+    assert lengths[60] == pytest.approx(60.0, abs=2.0)
+
+
+@pytest.mark.django_db
+def test_min_gap_keeps_clips_from_running_together():
+    """A busy stretch should yield one clip, not several near-adjacent ones."""
+    energy_curve = [
+        {"start": float(t), "end": float(t + 4), "score": 90.0 - i, "signals": {}}
+        for i, t in enumerate(range(100, 160, 10))
+    ]
+    params = ScoringParams.objects.get()
+    params.peak_count = 8
+    params.target_clip_length_seconds = 10
+    params.min_clip_length_seconds = 4
+
+    params.min_gap_seconds = 1
+    loose = select_clip_segments(energy_curve=energy_curve, params=params, duration_seconds=600.0)
+
+    params.min_gap_seconds = 30
+    tight = select_clip_segments(energy_curve=energy_curve, params=params, duration_seconds=600.0)
+
+    assert len(tight) < len(loose)
+    for earlier, later in zip(tight, tight[1:]):
+        assert later.start_seconds - earlier.end_seconds >= 30
