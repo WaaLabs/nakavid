@@ -21,6 +21,8 @@ User = get_user_model()
 def video(db):
     user = User.objects.create_user(username="worker-test", password="secret123!")
     return Video.objects.create(
+        # Clip extraction reads the curve off the video, so give it one.
+        energy_curve=[{"start": 8.0, "end": 12.0, "score": 90.0, "signals": {}}],
         title="Worker Test Video",
         source_path="/nakavid/originals/2026/07/20260707_worker_test/source.mp4",
         video_type=Video.VideoType.TYPE_A,
@@ -92,7 +94,11 @@ def test_process_job_marks_done_for_skeleton_handler(pending_job):
     pending_job.claimed_at = timezone.now()
     pending_job.save(update_fields=["status", "claimed_at"])
 
-    process_job(pending_job)
+    with (
+        patch("apps.pipeline.handlers.run_ffmpeg_trim"),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
+        process_job(pending_job)
 
     pending_job.refresh_from_db()
     assert pending_job.status == Job.Status.DONE
@@ -128,6 +134,8 @@ def test_dispatch_job_routes_all_job_types(video):
     with (
         patch("apps.pipeline.handlers.run_ffprobe", return_value=probe_result),
         patch("apps.pipeline.handlers.run_ffmpeg_web_transcode"),
+        patch("apps.pipeline.handlers.run_ffmpeg_trim"),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
     ):
         scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
         with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
@@ -175,7 +183,11 @@ def test_concurrent_workers_do_not_double_claim(video):
 
 @pytest.mark.django_db
 def test_run_worker_once_processes_single_job(pending_job):
-    call_command("run_worker", once=True)
+    with (
+        patch("apps.pipeline.handlers.run_ffmpeg_trim"),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
+        call_command("run_worker", once=True)
 
     pending_job.refresh_from_db()
     assert pending_job.status == Job.Status.DONE

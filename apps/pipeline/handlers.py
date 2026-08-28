@@ -20,6 +20,7 @@ from apps.pipeline.enqueue import (
     enqueue_transcode_job,
 )
 from apps.pipeline.extraction import (
+    ClipExtractionError,
     run_ffmpeg_thumbnail,
     run_ffmpeg_trim,
     select_clip_segments,
@@ -159,14 +160,15 @@ def handle_clip_extraction(job: Job) -> None:
         return
 
     params = scoring_params_from_job(job)
-    scoring_clip = video.clips.filter(storage_path=video.source_path).order_by("-id").first()
-    if scoring_clip is None or not scoring_clip.energy_curve:
-        return
+    if not video.energy_curve:
+        raise ClipExtractionError(
+            f"Video {video.pk} has no energy curve; run the score stage first"
+        )
 
     source_stem = Path(video.source_path).stem
     duration_seconds = float(video.duration_seconds)
     selections = select_clip_segments(
-        energy_curve=scoring_clip.energy_curve,
+        energy_curve=video.energy_curve,
         params=params,
         duration_seconds=duration_seconds,
     )
@@ -176,7 +178,7 @@ def handle_clip_extraction(job: Job) -> None:
     video_tag_ids = list(video.tags.values_list("id", flat=True))
 
     with transaction.atomic():
-        video.clips.exclude(pk=scoring_clip.pk).delete()
+        video.clips.all().delete()
         for clip_index, selection in enumerate(selections, start=1):
             relative_video_path, relative_thumbnail_path = build_highlight_relative_paths(
                 recorded_at=video.recorded_at,
@@ -217,8 +219,6 @@ def handle_clip_extraction(job: Job) -> None:
             if video_tag_ids:
                 clip.tags.set(video_tag_ids)
 
-        scoring_clip.delete()
-
 
 def handle_score(job: Job) -> None:
     video = job.video
@@ -233,32 +233,12 @@ def handle_score(job: Job) -> None:
     )
 
     with transaction.atomic():
-        # Identify the whole-video scoring clip by its storage path, the same way
-        # handle_clip_extraction looks it up. Taking the first clip by id instead
-        # grabs an extracted highlight on any re-score, overwriting that row's
-        # curve and end_seconds with whole-video values while extraction then
-        # finds no scoring clip and silently does nothing.
-        clip = video.clips.filter(storage_path=video.source_path).order_by("id").first()
-        if clip is None:
-            clip = Clip.objects.create(
-                video=video,
-                storage_path=video.source_path,
-                start_seconds=Decimal("0.000"),
-                end_seconds=Decimal(video.duration_seconds),
-                created_by=video.created_by,
-            )
-
-        clip.end_seconds = Decimal(video.duration_seconds)
-        clip.energy_curve = result.energy_curve
-        clip.highlight_score = result.highlight_score
-        clip.save(
-            update_fields=[
-                "end_seconds",
-                "energy_curve",
-                "highlight_score",
-                "updated_at",
-            ]
-        )
+        # The curve lives on the video, not on a placeholder clip row. That row
+        # was found by matching storage_path against the source, was deleted by
+        # extraction, and was the thing a re-score corrupted.
+        video.energy_curve = result.energy_curve
+        video.highlight_score = result.highlight_score
+        video.save(update_fields=["energy_curve", "highlight_score", "updated_at"])
         enqueue_clip_extraction_job(video=video, scoring_params_id=params.pk)
 
 

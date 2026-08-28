@@ -32,6 +32,11 @@ class Video(models.Model):
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)
     is_private = models.BooleanField(default=True)
+    # Whole-video per-window signals from the scoring stage. Kept on the video
+    # so selection can be re-run — and re-tuned — without re-scoring, which is
+    # the expensive half. Clips carry their own slice of this.
+    energy_curve = models.JSONField(default=list, blank=True)
+    highlight_score = models.PositiveSmallIntegerField(default=0)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="videos")
     tags = models.ManyToManyField("Tag", related_name="videos", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
