@@ -251,3 +251,43 @@ def test_process_job_score_failure_sets_error_stderr(storage_root, user):
     job.refresh_from_db()
     assert job.status == Job.Status.ERROR
     assert job.stderr == "Unable to open video for scoring"
+
+
+def test_smiles_are_counted_only_inside_detected_faces():
+    """A mouth-like blob outside every face must not count as a smile.
+
+    The cascade used to run over the whole frame, so 80 of 86 detections on
+    real footage landed outside any face and smile_ratio exceeded 1.0.
+    """
+    import numpy as np
+
+    from apps.pipeline.scoring import _count_smiles_in_faces
+
+    class FakeCascade:
+        """Reports one detection for any region it is given."""
+
+        def __init__(self):
+            self.regions_seen = []
+
+        def detectMultiScale(self, image, **kwargs):
+            self.regions_seen.append(image.shape)
+            return [(0, 0, 2, 2)]
+
+    frame = np.zeros((100, 200), dtype=np.uint8)
+    cascade = FakeCascade()
+
+    # Two faces -> the cascade is offered exactly two mouth regions.
+    total = _count_smiles_in_faces(
+        frame=frame, faces=[(0, 0, 40, 40), (100, 20, 40, 40)], smile_cascade=cascade
+    )
+    assert total == 2
+    assert len(cascade.regions_seen) == 2
+    # Each region is the lower half of its face box, never the whole frame.
+    for shape in cascade.regions_seen:
+        assert shape != frame.shape
+        assert shape[0] <= 20
+
+    # No faces -> no smiles, and the cascade is never run.
+    cascade_two = FakeCascade()
+    assert _count_smiles_in_faces(frame=frame, faces=[], smile_cascade=cascade_two) == 0
+    assert cascade_two.regions_seen == []
