@@ -215,6 +215,15 @@ def build_highlight_relative_paths(
 def run_ffmpeg_trim(
     *, source_path: Path, target_path: Path, start_seconds: float, end_seconds: float
 ) -> None:
+    """Trim a segment into a browser-safe H.264 8-bit 4:2:0 MP4.
+
+    Mirrors run_ffmpeg_web_transcode's browser-safety flags: yuv420p so a
+    10-bit source cannot produce an H.264 High 10 clip (which browsers render
+    as a black frame), explicit stream maps so iPhone metadata tracks are
+    dropped, and faststart so playback can begin before the file is loaded.
+    Callers should pass the transcoded playback file; these flags are the
+    backstop for sources that never needed transcoding.
+    """
     target_path.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.001, end_seconds - start_seconds)
     command = [
@@ -229,10 +238,18 @@ def run_ffmpeg_trim(
         str(source_path),
         "-t",
         f"{duration:.3f}",
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
         "-c:v",
         "libx264",
+        "-pix_fmt",
+        "yuv420p",
         "-c:a",
         "aac",
+        "-movflags",
+        "+faststart",
         str(target_path),
     ]
     try:
