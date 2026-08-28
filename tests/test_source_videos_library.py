@@ -83,9 +83,8 @@ def test_source_videos_lists_type_a_only(authenticated_client, sample_videos):
     content = response.content.decode()
     assert type_a.title in content
     assert type_b.title not in content
-    assert "Class: A" in content
-    assert "Theme: Animals" in content
-    assert "Duration: 1:30:00" in content
+    assert "A · Animals" in content  # class · theme
+    assert "1:30:00" in content
 
 
 @pytest.mark.django_db

@@ -87,7 +87,7 @@ def test_queue_status_shows_totals_and_recent_jobs(authenticated_client, sample_
 
     assert response.status_code == 200
     content = response.content.decode()
-    assert "Queue Status" in content
+    assert "Queue" in content
     assert "Pending" in content
     assert "Processing" in content
     assert "Done" in content

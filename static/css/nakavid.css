@@ -1,0 +1,552 @@
+/* NakaVid design tokens and shared component styles.
+ *
+ * One dark theme for the whole app. Django templates and the React islands
+ * both consume these custom properties, so the server-rendered pages and the
+ * mounted islands cannot drift apart the way they had. Island stylesheets
+ * reference var(--nv-*) rather than hard-coding their own slate palette.
+ */
+
+:root {
+  --nv-bg: #0b1220;
+  --nv-surface: #111c33;
+  --nv-surface-raised: #16223c;
+  --nv-border: #26334d;
+  --nv-border-strong: #35476b;
+
+  --nv-text: #e2e8f0;
+  --nv-text-muted: #94a3b8;
+  --nv-text-faint: #64748b;
+
+  --nv-accent: #38bdf8;
+  --nv-accent-strong: #0ea5e9;
+  --nv-accent-contrast: #04121f;
+
+  --nv-danger: #f87171;
+  --nv-danger-bg: #3b1a1f;
+  --nv-success: #4ade80;
+  --nv-success-bg: #10291d;
+  --nv-warning: #fbbf24;
+  --nv-warning-bg: #33260a;
+
+  --nv-radius: 0.625rem;
+  --nv-radius-sm: 0.375rem;
+  --nv-gap: 1rem;
+  --nv-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.25);
+  --nv-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --nv-content-width: 76rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--nv-bg);
+  color: var(--nv-text);
+  font-family: var(--nv-font);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- layout ---------- */
+
+.nv-shell {
+  max-width: var(--nv-content-width);
+  margin: 0 auto;
+  padding: 0 1.25rem 4rem;
+}
+
+.nv-page-head {
+  padding: 2rem 0 1.25rem;
+}
+
+.nv-page-head h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+.nv-page-head .intro,
+.intro {
+  margin: 0.4rem 0 0;
+  color: var(--nv-text-muted);
+  max-width: 60ch;
+}
+
+/* ---------- top nav ---------- */
+
+.nv-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgb(11 18 32 / 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--nv-border);
+}
+
+.nv-nav__inner {
+  max-width: var(--nv-content-width);
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  min-height: 3.25rem;
+  flex-wrap: wrap;
+}
+
+.nv-nav__brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--nv-text);
+  text-decoration: none;
+  font-size: 1.0625rem;
+}
+
+.nv-nav__links {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.nv-nav__links a {
+  color: var(--nv-text-muted);
+  text-decoration: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--nv-radius-sm);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.nv-nav__links a:hover {
+  color: var(--nv-text);
+  background: var(--nv-surface);
+}
+
+.nv-nav__links a[aria-current="page"] {
+  color: var(--nv-accent);
+  background: var(--nv-surface);
+}
+
+/* ---------- typography ---------- */
+
+a {
+  color: var(--nv-accent);
+}
+
+h2 {
+  font-size: 1.125rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.meta,
+.hint {
+  color: var(--nv-text-muted);
+  font-size: 0.875rem;
+}
+
+.hint {
+  margin: 0.25rem 0 0;
+}
+
+.empty {
+  color: var(--nv-text-muted);
+  background: var(--nv-surface);
+  border: 1px dashed var(--nv-border-strong);
+  border-radius: var(--nv-radius);
+  padding: 2rem;
+  text-align: center;
+}
+
+/* ---------- surfaces ---------- */
+
+.panel {
+  background: var(--nv-surface);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius);
+  padding: 1.25rem;
+}
+
+.panels {
+  display: grid;
+  gap: var(--nv-gap);
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+}
+
+/* ---------- forms ---------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nv-gap);
+  align-items: flex-end;
+  margin-bottom: 1.75rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--nv-surface);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius);
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--nv-text-muted);
+  margin-bottom: 0.3rem;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="password"],
+input[type="file"],
+input:not([type]),
+select,
+textarea {
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--nv-text);
+  background: var(--nv-bg);
+  border: 1px solid var(--nv-border-strong);
+  border-radius: var(--nv-radius-sm);
+  padding: 0.45rem 0.6rem;
+  min-width: 0;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--nv-accent);
+  outline-offset: 2px;
+}
+
+button,
+.button {
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--nv-radius-sm);
+  border: 1px solid var(--nv-accent-strong);
+  background: var(--nv-accent-strong);
+  color: var(--nv-accent-contrast);
+  padding: 0.45rem 0.9rem;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:hover,
+.button:hover {
+  background: var(--nv-accent);
+  border-color: var(--nv-accent);
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  color: var(--nv-text);
+  border-color: var(--nv-border-strong);
+}
+
+button.secondary:hover,
+.button.secondary:hover {
+  background: var(--nv-surface-raised);
+  border-color: var(--nv-accent);
+}
+
+button.danger {
+  background: transparent;
+  color: var(--nv-danger);
+  border-color: var(--nv-danger);
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.choice-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  padding: 0.5rem;
+  background: var(--nv-bg);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius-sm);
+}
+
+.choice-list label {
+  font-weight: 400;
+  color: var(--nv-text);
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* ---------- feedback ---------- */
+
+.errors,
+.error-cell,
+.error-muted {
+  color: var(--nv-danger);
+  font-size: 0.875rem;
+}
+
+.errors {
+  background: var(--nv-danger-bg);
+  border: 1px solid var(--nv-danger);
+  border-radius: var(--nv-radius-sm);
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.error-muted {
+  color: var(--nv-text-faint);
+}
+
+.messages {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.messages li {
+  background: var(--nv-success-bg);
+  border: 1px solid var(--nv-success);
+  color: var(--nv-success);
+  border-radius: var(--nv-radius-sm);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+}
+
+/* ---------- tables ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--nv-surface);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius);
+  overflow: hidden;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--nv-border);
+  vertical-align: top;
+}
+
+th {
+  color: var(--nv-text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--nv-surface-raised);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- badges ---------- */
+
+.badge,
+.status-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--nv-border-strong);
+  color: var(--nv-text-muted);
+  white-space: nowrap;
+}
+
+.status-badge.status-done {
+  color: var(--nv-success);
+  border-color: var(--nv-success);
+  background: var(--nv-success-bg);
+}
+
+.status-badge.status-error {
+  color: var(--nv-danger);
+  border-color: var(--nv-danger);
+  background: var(--nv-danger-bg);
+}
+
+.status-badge.status-processing {
+  color: var(--nv-warning);
+  border-color: var(--nv-warning);
+  background: var(--nv-warning-bg);
+}
+
+.badge--score {
+  color: var(--nv-accent);
+  border-color: var(--nv-accent);
+  background: rgb(56 189 248 / 0.12);
+}
+
+/* ---------- media cards ---------- */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1.25rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--nv-surface);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius);
+  overflow: hidden;
+  box-shadow: var(--nv-shadow);
+}
+
+.card:hover {
+  border-color: var(--nv-border-strong);
+}
+
+/* The media is the point of the card, so it leads and keeps 16:9. */
+.card__media {
+  aspect-ratio: 16 / 9;
+  background: #000;
+  position: relative;
+}
+
+.card__media video,
+.card__media img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: #000;
+}
+
+.card__media--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nv-text-faint);
+  font-size: 0.8125rem;
+  background: var(--nv-surface-raised);
+}
+
+.card__body {
+  padding: 0.75rem 0.9rem 0.9rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.card__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.card__title a {
+  text-decoration: none;
+  color: var(--nv-text);
+}
+
+.card__title a:hover {
+  color: var(--nv-accent);
+}
+
+.card__meta {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--nv-text-muted);
+}
+
+.card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+/* ---------- single-video player ---------- */
+
+.player-wrap {
+  background: #000;
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius);
+  overflow: hidden;
+}
+
+.player-wrap video {
+  width: 100%;
+  display: block;
+  max-height: 68vh;
+  background: #000;
+}
+
+/* ---------- queue status cards ---------- */
+
+.status-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--nv-gap);
+  margin-bottom: 1.75rem;
+}
+
+.status-card {
+  background: var(--nv-surface);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius);
+  padding: 0.9rem 1rem;
+}
+
+.status-label {
+  display: block;
+  color: var(--nv-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-value {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* ---------- upload drop zone ---------- */
+
+.drop-zone {
+  border: 2px dashed var(--nv-border-strong);
+  border-radius: var(--nv-radius);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  color: var(--nv-text-muted);
+  background: var(--nv-surface);
+}
+
+.drop-zone.is-active {
+  border-color: var(--nv-accent);
+  color: var(--nv-text);
+}
