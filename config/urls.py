@@ -22,6 +22,7 @@ from apps.library.views import (
     type_a_upload_create,
     type_a_upload_detail,
     type_b_ingest,
+    video_contact_sheet,
     video_stream,
 )
 
@@ -55,6 +56,11 @@ urlpatterns = [
     path("source-videos/", source_videos, name="source-videos"),
     path("source-videos/<int:video_id>/", lesson_view, name="lesson-view"),
     path("source-videos/<int:video_id>/stream/", video_stream, name="video-stream"),
+    path(
+        "source-videos/<int:video_id>/contact-sheet/",
+        video_contact_sheet,
+        name="video-contact-sheet",
+    ),
     path("ingest/type-b/", type_b_ingest, name="type-b-ingest"),
     path("ingest/type-a/", type_a_ingest, name="type-a-ingest"),
     path("ingest/type-a/uploads/", type_a_upload_create, name="type-a-upload-create"),

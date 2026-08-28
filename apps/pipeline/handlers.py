@@ -9,13 +9,16 @@ from django.db import transaction
 from apps.library.models import Clip, Combine, Video
 from apps.library.storage_paths import (
     build_combine_relative_path,
+    build_contact_sheet_relative_path,
     build_highlight_relative_paths,
     build_playback_relative_path,
     to_absolute_storage_path,
 )
 from apps.pipeline.combine_export import CombineExportError, run_ffmpeg_concat
+from apps.pipeline.contact_sheet import plan_contact_sheet, run_ffmpeg_contact_sheet
 from apps.pipeline.enqueue import (
     enqueue_clip_extraction_job,
+    enqueue_contact_sheet_job,
     enqueue_score_job,
     enqueue_transcode_job,
 )
@@ -90,6 +93,7 @@ def handle_probe(job: Job) -> None:
             ):
                 enqueue_transcode_job(video=video)
             else:
+                enqueue_contact_sheet_job(video=video)
                 enqueue_score_job(video=video)
 
 
@@ -108,7 +112,38 @@ def handle_transcode(job: Job) -> None:
     video.playback_path = to_absolute_storage_path(storage_root, relative_playback)
     video.save(update_fields=["playback_path", "updated_at"])
 
+    enqueue_contact_sheet_job(video=video)
     enqueue_score_job(video=video)
+
+
+def handle_contact_sheet(job: Job) -> None:
+    """Render the recording's sprite of evenly spaced frames."""
+    video = job.video
+    storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+    relative_sheet = build_contact_sheet_relative_path(_storage_path_to_relative(video.source_path))
+    layout = plan_contact_sheet(duration_seconds=video.duration_seconds)
+
+    run_ffmpeg_contact_sheet(
+        source_path=_playback_file_path(video),
+        target_path=storage_root / relative_sheet,
+        layout=layout,
+    )
+
+    video.contact_sheet_path = to_absolute_storage_path(storage_root, relative_sheet)
+    video.contact_sheet_interval_seconds = layout.interval_seconds
+    video.contact_sheet_columns = layout.columns
+    video.contact_sheet_tile_count = layout.tile_count
+    video.contact_sheet_tile_width = layout.tile_width
+    video.save(
+        update_fields=[
+            "contact_sheet_path",
+            "contact_sheet_interval_seconds",
+            "contact_sheet_columns",
+            "contact_sheet_tile_count",
+            "contact_sheet_tile_width",
+            "updated_at",
+        ]
+    )
 
 
 def handle_ingest(job: Job) -> None:
@@ -248,6 +283,7 @@ JOB_HANDLERS = {
     Job.JobType.TRANSCODE: handle_transcode,
     Job.JobType.CLIP_EXTRACTION: handle_clip_extraction,
     Job.JobType.SCORE: handle_score,
+    Job.JobType.CONTACT_SHEET: handle_contact_sheet,
     Job.JobType.COMBINE_EXPORT: handle_combine_export,
 }
 

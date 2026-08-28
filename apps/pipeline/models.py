@@ -60,6 +60,7 @@ class Job(models.Model):
         TRANSCODE = "transcode", "Transcode"
         CLIP_EXTRACTION = "clip_extraction", "Clip Extraction"
         SCORE = "score", "Score"
+        CONTACT_SHEET = "contact_sheet", "Contact Sheet"
         COMBINE_EXPORT = "combine_export", "Combine Export"
 
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="jobs")

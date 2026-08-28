@@ -24,6 +24,10 @@ def enqueue_score_job(*, video: Video) -> Job:
     )
 
 
+def enqueue_contact_sheet_job(*, video: Video) -> Job:
+    return Job.objects.create(video=video, job_type=Job.JobType.CONTACT_SHEET)
+
+
 def enqueue_clip_extraction_job(*, video: Video, scoring_params_id: int | None) -> Job:
     return Job.objects.create(
         video=video,

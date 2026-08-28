@@ -36,6 +36,13 @@ class Video(models.Model):
     # so selection can be re-run — and re-tuned — without re-scoring, which is
     # the expensive half. Clips carry their own slice of this.
     energy_curve = models.JSONField(default=list, blank=True)
+    # Sprite of evenly spaced frames, used to preview any timestamp without
+    # running ffmpeg in a request. Empty until the contact-sheet job runs.
+    contact_sheet_path = models.CharField(max_length=1024, blank=True, default="")
+    contact_sheet_interval_seconds = models.PositiveSmallIntegerField(default=0)
+    contact_sheet_columns = models.PositiveSmallIntegerField(default=0)
+    contact_sheet_tile_count = models.PositiveSmallIntegerField(default=0)
+    contact_sheet_tile_width = models.PositiveSmallIntegerField(default=0)
     highlight_score = models.PositiveSmallIntegerField(default=0)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="videos")
     tags = models.ManyToManyField("Tag", related_name="videos", blank=True)
