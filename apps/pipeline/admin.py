@@ -49,8 +49,19 @@ class ScoringParamsAdmin(admin.ModelAdmin):
         (
             "Window slicing",
             {
-                "description": "How the source is sampled before peaks are picked.",
-                "fields": ("window_size_seconds", "step_seconds", "smoothing_window_count"),
+                "description": (
+                    "How the source is sampled before peaks are picked. "
+                    "Detect max width downscales frames before face and smile "
+                    "detection — 0 keeps full resolution. Detection is roughly "
+                    "half of scoring time and scales with pixel count, so lowering "
+                    "this is the main speed lever, at the cost of changing counts."
+                ),
+                "fields": (
+                    "window_size_seconds",
+                    "step_seconds",
+                    "smoothing_window_count",
+                    "detect_max_width_pixels",
+                ),
             },
         ),
         (
