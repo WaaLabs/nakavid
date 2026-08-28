@@ -54,13 +54,21 @@ class ScoringParamsAdmin(admin.ModelAdmin):
                     "Detect max width downscales frames before face and smile "
                     "detection — 0 keeps full resolution. Detection is roughly "
                     "half of scoring time and scales with pixel count, so lowering "
-                    "this is the main speed lever, at the cost of changing counts."
+                    "this is the main speed lever, at the cost of changing counts. "
+                    "The Haar thresholds below decide how readily a face or a "
+                    "smile is accepted: lower scale factor and fewer required "
+                    "neighbours mean more detections and more false positives."
                 ),
                 "fields": (
                     "window_size_seconds",
                     "step_seconds",
                     "smoothing_window_count",
                     "detect_max_width_pixels",
+                    "face_scale_factor",
+                    "face_min_neighbors",
+                    "smile_scale_factor",
+                    "smile_min_neighbors",
+                    "smile_roi_min_height_pixels",
                 ),
             },
         ),

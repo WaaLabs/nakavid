@@ -17,7 +17,21 @@ class ScoringParams(models.Model):
     # scales with pixel count, and detection at 1920x1080 is ~53% of scoring
     # time. 0 keeps full resolution. Raising this speeds scoring up but
     # changes detection counts, so the value is a judgement on real footage.
-    detect_max_width_pixels = models.PositiveSmallIntegerField(default=0)
+    # Cap the frame width fed to detection. 1920 is a no-op on 1080p footage
+    # and stops 4K sources costing 4x for no extra signal. 0 disables the cap.
+    detect_max_width_pixels = models.PositiveSmallIntegerField(default=1920)
+
+    # Haar detection thresholds. These were hard-coded, and the smile values
+    # (1.7 / 20) were strict enough to suppress the false positives of a
+    # whole-frame scan — which, once detection is scoped to a face, threw away
+    # every real smile too: 0.4% of faces registered one.
+    face_scale_factor = models.DecimalField(max_digits=3, decimal_places=2, default=1.10)
+    face_min_neighbors = models.PositiveSmallIntegerField(default=4)
+    smile_scale_factor = models.DecimalField(max_digits=3, decimal_places=2, default=1.30)
+    smile_min_neighbors = models.PositiveSmallIntegerField(default=10)
+    # Mouth regions are ~45px tall at a median face size, near the cascade's
+    # limit. Enlarging the crop before detection measurably helps.
+    smile_roi_min_height_pixels = models.PositiveSmallIntegerField(default=64)
     min_clip_length_seconds = models.PositiveSmallIntegerField(default=4)
     # How long an extracted clip should be. Was a hard-coded +/-3s around the
     # peak, which pinned every clip to ~6s regardless of settings.
