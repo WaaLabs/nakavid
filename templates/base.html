@@ -15,13 +15,27 @@
         {% with current=request.resolver_match.url_name %}
         <div class="nv-nav__links">
           <a href="{% url 'clips-browser' %}" {% if current == 'clips-browser' %}aria-current="page"{% endif %}>Clips</a>
-          <a href="{% url 'source-videos' %}" {% if current == 'source-videos' or current == 'lesson-view' %}aria-current="page"{% endif %}>Long recordings</a>
+          <a href="{% url 'source-videos' %}" {% if current == 'source-videos' or current == 'lesson-view' %}aria-current="page"{% endif %}>Recordings</a>
           <a href="{% url 'combine-builder' %}" {% if current == 'combine-builder' %}aria-current="page"{% endif %}>Combine</a>
-          <a href="{% url 'tag-manager' %}" {% if current == 'tag-manager' or current == 'tag-edit' %}aria-current="page"{% endif %}>Tags</a>
-          <a href="{% url 'bulk-tagging' %}" {% if current == 'bulk-tagging' %}aria-current="page"{% endif %}>Bulk tagging</a>
+          <a href="{% url 'tag-manager' %}" {% if current == 'tag-manager' or current == 'tag-edit' or current == 'bulk-tagging' %}aria-current="page"{% endif %}>Tags</a>
           <a href="{% url 'queue-status' %}" {% if current == 'queue-status' %}aria-current="page"{% endif %}>Queue</a>
-          <a href="{% url 'type-a-ingest' %}" {% if current == 'type-a-ingest' %}aria-current="page"{% endif %}>Upload long</a>
-          <a href="{% url 'type-b-ingest' %}" {% if current == 'type-b-ingest' %}aria-current="page"{% endif %}>Upload short</a>
+
+          <details class="nv-menu">
+            <summary {% if current == 'type-a-ingest' or current == 'type-b-ingest' %}aria-current="page"{% endif %}>Upload</summary>
+            <div class="nv-menu__panel">
+              <a href="{% url 'type-a-ingest' %}">Long recording</a>
+              <a href="{% url 'type-b-ingest' %}">Short recording</a>
+            </div>
+          </details>
+
+          <details class="nv-menu">
+            <summary {% if current == 'scoring-tuning' %}aria-current="page"{% endif %}>Settings</summary>
+            <div class="nv-menu__panel">
+              <a href="{% url 'scoring-tuning' %}">Scoring tuning</a>
+              <a href="/admin/pipeline/scoringparams/">Scoring parameters</a>
+              <a href="/admin/">Django admin</a>
+            </div>
+          </details>
         </div>
         {% endwith %}
       </div>

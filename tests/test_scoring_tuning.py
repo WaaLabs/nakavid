@@ -72,7 +72,7 @@ def client_logged_in(client, video):
 
 @pytest.mark.django_db
 def test_tuning_page_requires_login(client, video):
-    response = client.get(reverse("scoring-tuning", args=[video.pk]))
+    response = client.get(reverse("scoring-tuning"))
 
     assert response.status_code == 302
     assert response["Location"].startswith("/accounts/login/")
@@ -81,8 +81,9 @@ def test_tuning_page_requires_login(client, video):
 @pytest.mark.django_db
 def test_weights_change_which_moments_win(client_logged_in, video):
     """The whole point: re-weighting re-ranks without touching the signals."""
-    url = reverse("scoring-tuning", args=[video.pk])
+    url = reverse("scoring-tuning")
     base = {
+        "video": str(video.pk),
         "silence_penalty_weight": "0.1",
         "silence_rms_threshold": "0.01",
         "smoothing_window_count": "3",
@@ -129,8 +130,9 @@ def test_preview_does_not_touch_stored_state(client_logged_in, video):
     before_curve = list(video.energy_curve)
 
     client_logged_in.get(
-        reverse("scoring-tuning", args=[video.pk]),
+        reverse("scoring-tuning"),
         {
+            "video": str(video.pk),
             "face_weight": "0.9",
             "smile_weight": "0",
             "motion_weight": "0",
@@ -152,7 +154,7 @@ def test_preview_does_not_touch_stored_state(client_logged_in, video):
 
 @pytest.mark.django_db
 def test_flat_signals_are_called_out(client_logged_in, video):
-    response = client_logged_in.get(reverse("scoring-tuning", args=[video.pk]))
+    response = client_logged_in.get(reverse("scoring-tuning"))
 
     summary = {row["name"]: row for row in response.context["summary"]}
     # smile_ratio varies in the fixture; a constant signal would be flagged.
@@ -163,7 +165,7 @@ def test_flat_signals_are_called_out(client_logged_in, video):
     ]
     video.save(update_fields=["energy_curve"])
 
-    response = client_logged_in.get(reverse("scoring-tuning", args=[video.pk]))
+    response = client_logged_in.get(reverse("scoring-tuning"))
     summary = {row["name"]: row for row in response.context["summary"]}
     assert summary["smile ratio"]["is_flat"] is True
 
@@ -171,8 +173,9 @@ def test_flat_signals_are_called_out(client_logged_in, video):
 @pytest.mark.django_db
 def test_apply_saves_params_and_queues_extraction_not_scoring(client_logged_in, video):
     response = client_logged_in.post(
-        reverse("scoring-tuning-apply", args=[video.pk]),
+        reverse("scoring-tuning-apply"),
         {
+            "video_id": str(video.pk),
             "face_weight": "0.5",
             "smile_weight": "0",
             "motion_weight": "0.5",
@@ -216,3 +219,76 @@ def test_rescore_preserves_signals_and_only_moves_scores(video):
         assert after["signals"] == before["signals"]
         assert after["start"] == before["start"]
     assert any(point["score"] > 0 for point in rescored)
+
+
+@pytest.mark.django_db
+def test_tuning_defaults_to_a_recording_when_none_is_named(client_logged_in, video):
+    """It is a settings page, so it must work without a recording in the URL."""
+    response = client_logged_in.get(reverse("scoring-tuning"))
+
+    assert response.status_code == 200
+    assert response.context["video"].pk == video.pk
+    assert list(response.context["recordings"]) == [video]
+
+
+@pytest.mark.django_db
+def test_unscored_recordings_are_not_offered_for_preview(client_logged_in, video):
+    """Previewing needs a stored curve, so a bare recording is not a choice."""
+    unscored = Video.objects.create(
+        title="Never Scored",
+        source_path="/nakavid/originals/2026/08/20260826_a_b/other.mp4",
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        class_name="A",
+        theme="B",
+        recorded_at=timezone.now(),
+        duration_seconds=100,
+        is_private=True,
+        created_by=video.created_by,
+    )
+
+    response = client_logged_in.get(reverse("scoring-tuning"))
+
+    assert unscored not in response.context["recordings"]
+    assert video in response.context["recordings"]
+
+
+@pytest.mark.django_db
+def test_tuning_page_survives_having_nothing_to_preview(client, db):
+    """A fresh install has no scored recordings; the page must still render."""
+    User.objects.create_user(username="fresh", password="secret123!")
+    assert client.login(username="fresh", password="secret123!")
+
+    response = client.get(reverse("scoring-tuning"))
+
+    assert response.status_code == 200
+    assert response.context["video"] is None
+    assert response.context["recordings"] == []
+
+
+@pytest.mark.django_db
+def test_apply_says_the_settings_are_global(client_logged_in, video):
+    """The params are global; only the previewed recording is rebuilt."""
+    response = client_logged_in.post(
+        reverse("scoring-tuning-apply"),
+        {
+            "video_id": str(video.pk),
+            "face_weight": "0.5",
+            "smile_weight": "0",
+            "motion_weight": "0.5",
+            "audio_weight": "0",
+            "silence_penalty_weight": "0.1",
+            "silence_rms_threshold": "0.01",
+            "smoothing_window_count": "3",
+            "target_clip_length_seconds": "30",
+            "min_clip_length_seconds": "4",
+            "min_gap_seconds": "15",
+            "peak_count": "8",
+        },
+        follow=True,
+    )
+
+    assert response.status_code == 200
+    message = " ".join(str(m) for m in response.context["messages"])
+    assert "all future scoring" in message
+    assert video.title in message
