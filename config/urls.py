@@ -56,17 +56,9 @@ urlpatterns = [
     path("queue-status/", queue_status, name="queue-status"),
     path("queue-status/jobs/<int:job_id>/requeue/", queue_requeue_job, name="queue-requeue-job"),
     path("source-videos/", source_videos, name="source-videos"),
+    path("tuning/", scoring_tuning, name="scoring-tuning"),
+    path("tuning/apply/", scoring_tuning_apply, name="scoring-tuning-apply"),
     path("source-videos/<int:video_id>/", lesson_view, name="lesson-view"),
-    path(
-        "source-videos/<int:video_id>/tuning/",
-        scoring_tuning,
-        name="scoring-tuning",
-    ),
-    path(
-        "source-videos/<int:video_id>/tuning/apply/",
-        scoring_tuning_apply,
-        name="scoring-tuning-apply",
-    ),
     path("source-videos/<int:video_id>/stream/", video_stream, name="video-stream"),
     path(
         "source-videos/<int:video_id>/contact-sheet/",

@@ -462,10 +462,35 @@ def _tuning_signal_summary(energy_curve: list[dict]) -> list[dict[str, object]]:
     return summary
 
 
+def _tunable_recordings():
+    """Recordings that can be previewed against — they need a stored curve."""
+    return (
+        Video.objects.filter(video_type=Video.VideoType.TYPE_A)
+        .exclude(energy_curve=[])
+        .order_by("-recorded_at", "-id")
+    )
+
+
 @login_required
-def scoring_tuning(request, video_id: int):
-    """Re-rank a recording's clips under different weights, without re-scoring."""
-    video = get_object_or_404(Video.objects.filter(video_type=Video.VideoType.TYPE_A), pk=video_id)
+def scoring_tuning(request):
+    """Tune the global scoring parameters, previewed against one recording.
+
+    The parameters are global — they apply to every future score — so this is a
+    settings surface, not a property of a recording. A recording is only the
+    sample you judge the settings against, chosen with the selector.
+    """
+    recordings = list(_tunable_recordings())
+    requested = request.GET.get("video")
+    video = None
+    if requested:
+        video = next((item for item in recordings if str(item.pk) == requested), None)
+        if video is None:
+            video = get_object_or_404(
+                Video.objects.filter(video_type=Video.VideoType.TYPE_A), pk=requested
+            )
+    elif recordings:
+        video = recordings[0]
+
     active = get_active_scoring_params()
 
     submitted = any(field in request.GET for field in ScoringTuningForm.base_fields)
@@ -474,7 +499,7 @@ def scoring_tuning(request, video_id: int):
     candidates: list[dict[str, object]] = []
     curve: list[dict] = []
     preview_params = active
-    if video.energy_curve and form.is_valid():
+    if video is not None and video.energy_curve and form.is_valid():
         # An unsaved row: previewing must not disturb the active parameters.
         preview_params = ScoringParams(**form.cleaned_data)
         curve = rescore_energy_curve(energy_curve=video.energy_curve, params=preview_params)
@@ -506,33 +531,40 @@ def scoring_tuning(request, video_id: int):
         "library/scoring_tuning.html",
         {
             "video": video,
+            "recordings": recordings,
             "form": form,
             "candidates": candidates,
-            "summary": _tuning_signal_summary(video.energy_curve),
-            "has_curve": bool(video.energy_curve),
-            "has_sheet": bool(video.contact_sheet_path),
+            "summary": _tuning_signal_summary(video.energy_curve if video else []),
+            "has_curve": bool(video and video.energy_curve),
+            "has_sheet": bool(video and video.contact_sheet_path),
             "active_params": active,
-            "window_count": len(video.energy_curve),
+            "window_count": len(video.energy_curve) if video else 0,
         },
     )
 
 
 @login_required
 @require_POST
-def scoring_tuning_apply(request, video_id: int):
-    """Save the previewed settings and rebuild this recording's clips.
+def scoring_tuning_apply(request):
+    """Save the settings globally and rebuild the previewed recording's clips.
 
-    Selection runs off the stored curve, so this re-extracts in seconds rather
-    than re-scoring. Detection thresholds are untouched by design.
+    The new parameter set becomes active for every future score. Only the
+    recording being previewed is rebuilt now, because selection runs off its
+    stored curve and costs seconds; other recordings keep their existing clips
+    until they are re-extracted.
     """
-    video = get_object_or_404(Video.objects.filter(video_type=Video.VideoType.TYPE_A), pk=video_id)
+    video = get_object_or_404(
+        Video.objects.filter(video_type=Video.VideoType.TYPE_A),
+        pk=request.POST.get("video_id"),
+    )
+    tuning_url = f"{reverse('scoring-tuning')}?video={video.pk}"
     form = ScoringTuningForm(request.POST)
     if not form.is_valid():
         messages.error(request, "Those settings are not valid, so nothing was changed.")
-        return redirect("scoring-tuning", video_id=video.pk)
+        return redirect(tuning_url)
     if not video.energy_curve:
         messages.error(request, "This recording has not been scored yet.")
-        return redirect("scoring-tuning", video_id=video.pk)
+        return redirect(tuning_url)
 
     active = get_active_scoring_params()
     carried = {
@@ -553,8 +585,9 @@ def scoring_tuning_apply(request, video_id: int):
 
     messages.success(
         request,
-        f"Saved scoring params #{params.pk} and queued extraction job #{job.pk}. "
-        "Clips rebuild from the stored curve, so no re-score is needed.",
+        f"Scoring params #{params.pk} are now active for all future scoring. "
+        f"Queued extraction job #{job.pk} to rebuild {video.title} from its stored "
+        "curve — other recordings keep their current clips until re-extracted.",
     )
     return redirect("queue-status")
 

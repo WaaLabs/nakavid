@@ -4,13 +4,35 @@
 {% block heading %}Scoring tuning{% endblock %}
 {% block intro %}
 <p class="intro">
-  {{ video.title }} · {{ window_count }} scored windows. Weights and selection re-run
-  against signals already measured, so previewing is instant — no re-score.
+  These settings apply to <strong>all future scoring</strong>. Pick a recording to judge
+  them against — weights and selection re-run over signals already measured, so
+  previewing is instant and changes nothing until you apply.
 </p>
 {% endblock %}
 
 {% block content %}
-{% if not has_curve %}
+<form method="get" class="filters tuning-picker">
+  <div class="field">
+    <label for="tuning-video">Preview against</label>
+    <select id="tuning-video" name="video" onchange="this.form.submit()">
+      {% for option in recordings %}
+      <option value="{{ option.id }}" {% if video and option.id == video.id %}selected{% endif %}>
+        {{ option.title }} — {{ option.class_name }} · {{ option.recorded_at|date:"Y-m-d" }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  {% if video %}
+  <p class="hint">{{ window_count }} scored windows · <a href="{% url 'lesson-view' video.id %}">open recording</a></p>
+  {% endif %}
+</form>
+
+{% if not recordings %}
+<p class="empty">
+  No scored recordings yet. Upload a long recording and let the score stage finish,
+  then come back to tune against it.
+</p>
+{% elif not has_curve %}
 <p class="empty">
   This recording has no energy curve yet. Run the score stage before tuning.
 </p>
@@ -43,7 +65,7 @@
 
     <div class="actions">
       <button type="submit">Preview</button>
-      <a class="button secondary" href="{% url 'scoring-tuning' video.id %}">Reset</a>
+      <a class="button secondary" href="{% url 'scoring-tuning' %}?video={{ video.id }}">Reset</a>
     </div>
 
     <p class="hint tuning-note">
@@ -115,14 +137,16 @@
       {% endfor %}
     </div>
 
-    <form method="post" action="{% url 'scoring-tuning-apply' video.id %}" class="panel tuning-apply">
+    <form method="post" action="{% url 'scoring-tuning-apply' %}" class="panel tuning-apply">
       {% csrf_token %}
+      <input type="hidden" name="video_id" value="{{ video.id }}" />
       {% for field in form %}
       <input type="hidden" name="{{ field.name }}" value="{{ field.value|default_if_none:'' }}" />
       {% endfor %}
       <p>
-        Saves these as a new scoring params set and rebuilds this recording's clips
-        from the stored curve. No re-score.
+        Saves these as the active scoring params for <strong>all</strong> future scoring,
+        and rebuilds <strong>{{ video.title }}</strong> now from its stored curve — no
+        re-score. Other recordings keep their current clips until re-extracted.
       </p>
       <button type="submit">Apply and rebuild clips</button>
     </form>
