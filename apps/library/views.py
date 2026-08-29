@@ -385,6 +385,7 @@ def _filtered_clips(*, form: ClipsBrowserFilterForm):
     class_name = form.cleaned_data.get("class_name")
     recorded_date = form.cleaned_data.get("recorded_date")
     min_score = form.cleaned_data.get("min_score")
+    source = form.cleaned_data.get("source")
 
     if class_name:
         clips = clips.filter(video__class_name__iexact=class_name)
@@ -392,6 +393,12 @@ def _filtered_clips(*, form: ClipsBrowserFilterForm):
         clips = clips.filter(video__recorded_at__date=recorded_date)
     if min_score is not None:
         clips = clips.filter(highlight_score__gte=min_score)
+    # A clip is either cut from a long recording or is a short recording in
+    # its own right; the parent's type is what distinguishes them.
+    if source == "extracted":
+        clips = clips.filter(video__video_type=Video.VideoType.TYPE_A)
+    elif source == "uploaded":
+        clips = clips.filter(video__video_type=Video.VideoType.TYPE_B)
     return clips
 
 

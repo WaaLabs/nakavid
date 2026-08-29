@@ -21,6 +21,7 @@ class ProbeResult:
     width: int
     height: int
     pixel_format: str = ""
+    rotation: int = 0
 
 
 # Codec/pixel-format combinations a browser <video> element can decode directly.
@@ -43,6 +44,35 @@ def orientation_from_dimensions(*, width: int, height: int) -> str:
     if height > width:
         return Video.Orientation.PORTRAIT
     return Video.Orientation.SQUARE
+
+
+def rotation_degrees(video_stream: dict) -> int:
+    """Rotation a player will apply, from the stream's display matrix.
+
+    Phones record portrait as a landscape frame plus a rotation matrix, so the
+    encoded width and height say nothing about which way up the video is.
+    Reading only width/height recorded a portrait clip as landscape.
+    """
+    for side_data in video_stream.get("side_data_list") or []:
+        if "rotation" in side_data:
+            try:
+                return int(side_data["rotation"]) % 360
+            except (TypeError, ValueError):
+                continue
+    tags = video_stream.get("tags") or {}
+    if "rotate" in tags:
+        try:
+            return int(tags["rotate"]) % 360
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+def display_dimensions(*, width: int, height: int, rotation: int) -> tuple[int, int]:
+    """Dimensions as displayed, with a quarter turn swapping the axes."""
+    if rotation % 180 == 90:
+        return height, width
+    return width, height
 
 
 def parse_ffprobe_payload(payload: dict) -> ProbeResult:
@@ -68,13 +98,19 @@ def parse_ffprobe_payload(payload: dict) -> ProbeResult:
     duration_seconds = int(duration.to_integral_value(rounding=ROUND_HALF_UP))
     duration_seconds = max(duration_seconds, 1)
 
+    rotation = rotation_degrees(video_stream)
+    display_width, display_height = display_dimensions(
+        width=int(width), height=int(height), rotation=rotation
+    )
+
     return ProbeResult(
         duration_seconds=duration_seconds,
-        orientation=orientation_from_dimensions(width=int(width), height=int(height)),
+        orientation=orientation_from_dimensions(width=display_width, height=display_height),
         video_codec=str(codec_name),
-        width=int(width),
-        height=int(height),
+        width=display_width,
+        height=display_height,
         pixel_format=str(video_stream.get("pix_fmt") or ""),
+        rotation=rotation,
     )
 
 
@@ -86,7 +122,11 @@ def run_ffprobe(file_path: Path) -> ProbeResult:
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration:stream=codec_type,codec_name,width,height,pix_fmt",
+                (
+                    "format=duration"
+                    ":stream=codec_type,codec_name,width,height,pix_fmt"
+                    ":stream_side_data=rotation"
+                ),
                 "-of",
                 "json",
                 str(file_path),

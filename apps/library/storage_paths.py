@@ -68,6 +68,12 @@ def build_contact_sheet_relative_path(source_relative_path: str) -> str:
     return str(source.with_name(f"{source.stem}__sheet.jpg"))
 
 
+def build_short_thumbnail_relative_path(source_relative_path: str) -> str:
+    """Poster frame for a short recording, beside the file it came from."""
+    source = PurePosixPath(source_relative_path)
+    return str(source.with_name(f"{source.stem}__thumb.jpg"))
+
+
 def build_playback_relative_path(source_relative_path: str) -> str:
     """Sibling H.264 rendition path for a source that is not browser-playable."""
     source = PurePosixPath(source_relative_path)

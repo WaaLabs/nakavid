@@ -410,6 +410,9 @@ tbody tr:last-child td {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
   gap: 1.25rem;
+  /* Cards take their natural height, so a portrait card does not stretch the
+   * landscape ones beside it. */
+  align-items: start;
 }
 
 .card {
@@ -427,8 +430,11 @@ tbody tr:last-child td {
 }
 
 /* The media is the point of the card, so it leads and keeps 16:9. */
+/* The media box matches the recording's own shape, so portrait phone clips are
+ * neither cropped nor floated in a wide letterbox. Falls back to 16:9 when
+ * dimensions are unknown. */
 .card__media {
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--card-aspect, 16 / 9);
   background: #000;
   position: relative;
 }
@@ -438,7 +444,9 @@ tbody tr:last-child td {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  /* contain, not cover: cropping a clip to fit a box hides the content the
+   * card exists to show. */
+  object-fit: contain;
   background: #000;
 }
 
@@ -764,4 +772,22 @@ tbody tr:last-child td {
 .tuning-picker select {
   min-width: 18rem;
   max-width: 100%;
+}
+
+/* Portrait media would otherwise make a card several times taller than its
+ * neighbours, so cap it and letterbox beyond that point. */
+.card__media {
+  max-height: 30rem;
+}
+
+/* Whether a clip was cut from a long recording or uploaded as its own short
+ * recording — quiet, since it is context rather than a headline. */
+.badge--source {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--nv-text-faint);
+  border-color: var(--nv-border);
+  margin-left: 0.35rem;
 }
