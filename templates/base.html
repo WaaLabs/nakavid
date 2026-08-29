@@ -16,7 +16,7 @@
         <div class="nv-nav__links">
           <a href="{% url 'clips-browser' %}" {% if current == 'clips-browser' %}aria-current="page"{% endif %}>Clips</a>
           <a href="{% url 'source-videos' %}" {% if current == 'source-videos' or current == 'lesson-view' %}aria-current="page"{% endif %}>Recordings</a>
-          <a href="{% url 'combine-builder' %}" {% if current == 'combine-builder' %}aria-current="page"{% endif %}>Combine</a>
+          <a href="{% url 'combines' %}" {% if current == 'combines' or current == 'combine-builder' %}aria-current="page"{% endif %}>Combines</a>
           <a href="{% url 'tag-manager' %}" {% if current == 'tag-manager' or current == 'tag-edit' or current == 'bulk-tagging' %}aria-current="page"{% endif %}>Tags</a>
           <a href="{% url 'queue-status' %}" {% if current == 'queue-status' %}aria-current="page"{% endif %}>Queue</a>
 

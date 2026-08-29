@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Combines — NakaVid{% endblock %}
+{% block heading %}Combines{% endblock %}
+{% block intro %}
+<p class="intro">
+  Manual concatenations of clips, exported by the worker. Deterministic assembly —
+  no beat-sync, no montage engine.
+</p>
+{% endblock %}
+
+{% block content %}
+<p class="actions">
+  <a class="button" href="{% url 'combine-builder' %}">New combine</a>
+</p>
+
+{% if combines %}
+<div class="card-grid">
+  {% for combine in combines %}
+  <article class="card">
+    {% if combine.status == 'done' %}
+    <div class="card__media">
+      <video controls preload="none" src="{% url 'combine-output' combine.id %}"></video>
+    </div>
+    {% else %}
+    <div class="card__media card__media--empty">
+      {% if combine.status == 'error' %}Export failed{% else %}Exporting…{% endif %}
+    </div>
+    {% endif %}
+    <div class="card__body">
+      <h2 class="card__title">{{ combine.title }}</h2>
+      <p class="card__meta">
+        {{ combine.clip_count }} clip{{ combine.clip_count|pluralize }} ·
+        {{ combine.created_at|date:"Y-m-d H:i" }}
+      </p>
+      <div class="card__footer">
+        <span class="status-badge status-{{ combine.status }}">{{ combine.get_status_display }}</span>
+        {% if combine.status == 'done' %}
+        <a class="button secondary" href="{% url 'combine-output' combine.id %}" download>Download</a>
+        {% endif %}
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">
+  No combines yet. Filter some clips in the builder, drag them into an order, and export.
+</p>
+{% endif %}
+{% endblock %}

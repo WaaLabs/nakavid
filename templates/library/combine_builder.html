@@ -12,6 +12,10 @@
 {% endblock %}
 
 {% block content %}
+<p class="actions">
+  <a class="button secondary" href="{% url 'combines' %}">← All combines</a>
+</p>
+
   <form method="get" class="filters">
     <div class="field">
       <label for="id_class_name">Class</label>

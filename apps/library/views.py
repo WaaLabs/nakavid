@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Count
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -762,6 +763,29 @@ def _combine_builder_clip_payload(*, clips: list[Clip], request) -> list[dict[st
             }
         )
     return payload
+
+
+@login_required
+def combines(request):
+    """Finished and in-flight combines, with the export available to play."""
+    rows = (
+        Combine.objects.prefetch_related("combine_clips__clip__video")
+        .order_by("-created_at", "-id")
+        .annotate(clip_count=Count("combine_clips"))
+    )
+    return render(request, "library/combines.html", {"combines": rows})
+
+
+@login_required
+def combine_output(request, combine_id: int):
+    """Serve a combine's exported file through the proxy handoff."""
+    combine = get_object_or_404(Combine, pk=combine_id)
+    if combine.status != Combine.Status.DONE or not combine.output_path:
+        raise Http404("Combine has no exported file yet")
+    response = HttpResponse()
+    response["X-Accel-Redirect"] = to_accel_redirect_path(combine.output_path)
+    response["Content-Type"] = ""
+    return response
 
 
 @login_required
