@@ -13,6 +13,9 @@ class ScoringParams(models.Model):
     window_size_seconds = models.PositiveSmallIntegerField(default=4)
     step_seconds = models.PositiveSmallIntegerField(default=2)
     smoothing_window_count = models.PositiveSmallIntegerField(default=3)
+    # Frames sampled per window for face, smile and motion. Was hard-coded
+    # at 12. Detection is over half of scoring time and scales with this.
+    frames_per_window = models.PositiveSmallIntegerField(default=12)
     # Downscale frames to this width before face/smile detection. Haar cost
     # scales with pixel count, and detection at 1920x1080 is ~53% of scoring
     # time. 0 keeps full resolution. Raising this speeds scoring up but

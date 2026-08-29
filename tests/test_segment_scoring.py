@@ -311,3 +311,69 @@ def test_smiles_are_counted_only_inside_detected_faces():
         == 0
     )
     assert cascade_two.regions_seen == []
+
+
+def test_audio_track_slices_instead_of_redecoding():
+    """Audio is decoded once per run and sliced, not re-decoded per window."""
+    import numpy as np
+
+    from apps.pipeline.scoring import AudioTrack
+
+    # 4 seconds at 100 Hz, rising ramp so slices are distinguishable.
+    track = AudioTrack(
+        samples=np.arange(400, dtype=np.float32), sample_rate=100, offset_seconds=0.0
+    )
+
+    first = track.slice(start_seconds=0.0, end_seconds=1.0)
+    second = track.slice(start_seconds=2.0, end_seconds=3.0)
+
+    assert len(first) == 100
+    assert len(second) == 100
+    assert first[0] == 0.0
+    assert second[0] == 200.0
+
+
+def test_audio_track_respects_its_own_offset():
+    """A track covering a later span maps window times onto its own samples."""
+    import numpy as np
+
+    from apps.pipeline.scoring import AudioTrack
+
+    track = AudioTrack(
+        samples=np.arange(400, dtype=np.float32), sample_rate=100, offset_seconds=10.0
+    )
+
+    window = track.slice(start_seconds=11.0, end_seconds=12.0)
+
+    assert len(window) == 100
+    assert window[0] == 100.0
+
+
+@pytest.mark.django_db
+def test_frames_per_window_is_a_parameter_not_a_constant():
+    """Detection cost scales with this, so it must be tunable."""
+    from unittest.mock import patch
+
+    from apps.pipeline.scoring import extract_window_signals
+
+    params = ScoringParams.objects.get()
+    assert params.frames_per_window == 12
+
+    with patch("apps.pipeline.scoring._sample_frames", return_value=[]) as sample:
+        extract_window_signals(
+            video_path=Path("/nowhere.mp4"),
+            start_seconds=0.0,
+            end_seconds=4.0,
+            frames_per_window=5,
+            audio_track=_silent_track(),
+        )
+
+    assert sample.call_args.kwargs["max_frames"] == 5
+
+
+def _silent_track():
+    import numpy as np
+
+    from apps.pipeline.scoring import AudioTrack
+
+    return AudioTrack(samples=np.zeros(100, dtype=np.float32), sample_rate=100, offset_seconds=0.0)
