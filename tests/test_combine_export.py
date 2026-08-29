@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -167,40 +170,121 @@ def test_process_job_records_stderr_for_combine_export_failure(storage_root, use
     assert combine.status == Combine.Status.ERROR
 
 
-@pytest.mark.django_db
-def test_run_ffmpeg_concat_invokes_ffmpeg_with_concat_demuxer(tmp_path):
-    first = tmp_path / "first.mp4"
-    second = tmp_path / "second.mp4"
-    output = tmp_path / "output.mp4"
-    first.write_bytes(b"a")
-    second.write_bytes(b"b")
-    captured_list_contents = ""
-
-    def capture_list_file(command, **kwargs):
-        nonlocal captured_list_contents
-        list_path = Path(command[command.index("-i") + 1])
-        captured_list_contents = list_path.read_text(encoding="utf-8")
-
-    with patch("apps.pipeline.combine_export.subprocess.run", side_effect=capture_list_file):
-        run_ffmpeg_concat(input_paths=[first, second], target_path=output)
-
-    assert f"file '{first}'" in captured_list_contents
-    assert f"file '{second}'" in captured_list_contents
+ffmpeg_required = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="ffmpeg/ffprobe not available",
+)
 
 
-@pytest.mark.django_db
-def test_run_ffmpeg_concat_raises_on_failure(tmp_path):
-    clip = tmp_path / "clip.mp4"
-    output = tmp_path / "output.mp4"
-    clip.write_bytes(b"a")
+def _make_clip(path, *, seconds, width, height, silent=False):
+    command = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        f"testsrc=duration={seconds}:size={width}x{height}:rate=25",
+    ]
+    if not silent:
+        command += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}"]
+    command += ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
+    if not silent:
+        command += ["-c:a", "aac", "-shortest"]
+    command += [str(path)]
+    subprocess.run(command, check=True, capture_output=True)
 
-    with patch(
-        "apps.pipeline.combine_export.subprocess.run",
-        side_effect=__import__("subprocess").CalledProcessError(
-            1,
-            ["ffmpeg"],
-            stderr="invalid input",
-        ),
-    ):
-        with pytest.raises(CombineExportError, match="invalid input"):
-            run_ffmpeg_concat(input_paths=[clip], target_path=output)
+
+def _probe(path):
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name,width,height,pix_fmt",
+            "-of",
+            "json",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    stream = payload["streams"][0]
+    return float(payload["format"]["duration"]), stream
+
+
+@ffmpeg_required
+def test_concat_of_mismatched_clips_has_the_right_length_and_codec(tmp_path):
+    """The bug: 125s of mixed-shape clips came out as 1h44m of HEVC.
+
+    The concat demuxer with -c copy takes the first input's parameters and
+    appends packets that do not match them, producing nonsense rather than an
+    error. Portrait and landscape together is the ordinary case here.
+    """
+    portrait = tmp_path / "portrait.mp4"
+    landscape = tmp_path / "landscape.mp4"
+    _make_clip(portrait, seconds=3, width=480, height=854)
+    _make_clip(landscape, seconds=4, width=854, height=480)
+    output = tmp_path / "combined.mp4"
+
+    run_ffmpeg_concat(input_paths=[portrait, landscape], target_path=output)
+
+    duration, stream = _probe(output)
+    assert duration == pytest.approx(7.0, abs=1.0)
+    assert stream["codec_name"] == "h264"
+    assert stream["pix_fmt"] == "yuv420p"
+    # One canvas, so the portrait clip is pillarboxed rather than cropped.
+    assert (stream["width"], stream["height"]) == (1920, 1080)
+
+
+@ffmpeg_required
+def test_a_silent_clip_does_not_lose_the_audio_of_later_clips(tmp_path):
+    """Without a synthesised track, concat drops audio from that point on."""
+    silent = tmp_path / "silent.mp4"
+    noisy = tmp_path / "noisy.mp4"
+    _make_clip(silent, seconds=2, width=640, height=360, silent=True)
+    _make_clip(noisy, seconds=2, width=640, height=360)
+    output = tmp_path / "combined.mp4"
+
+    run_ffmpeg_concat(input_paths=[silent, noisy], target_path=output)
+
+    streams = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "json",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(streams.stdout).get("streams"), "combine lost its audio track"
+    duration, _ = _probe(output)
+    assert duration == pytest.approx(4.0, abs=1.0)
+
+
+@ffmpeg_required
+def test_a_broken_input_surfaces_as_an_error(tmp_path):
+    """A real ffmpeg failure must raise, not leave a half-written export."""
+    not_a_video = tmp_path / "clip.mp4"
+    not_a_video.write_bytes(b"this is not a video")
+    output = tmp_path / "combined.mp4"
+
+    with pytest.raises(CombineExportError):
+        run_ffmpeg_concat(input_paths=[not_a_video], target_path=output)
