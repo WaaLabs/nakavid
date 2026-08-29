@@ -169,3 +169,31 @@ def test_clips_browser_filters_by_source(client, short_recording, storage_root):
 
     only_uploaded = client.get(url, {"source": "uploaded"}).context["clips"]
     assert [clip.pk for clip in only_uploaded] == [uploaded.pk]
+
+
+@pytest.mark.django_db
+def test_transcoding_points_the_clip_at_the_playable_rendition(short_recording, storage_root):
+    """Otherwise the rendition exists but nothing serves it.
+
+    A short recording's clip pointed at the original file, so a transcoded
+    HEVC upload still streamed the HEVC — the browser-safe copy was never used.
+    """
+    from apps.pipeline.handlers import handle_transcode
+
+    original = short_recording.source_path
+    job = Job.objects.create(
+        video=short_recording,
+        job_type=Job.JobType.TRANSCODE,
+        status=Job.Status.PROCESSING,
+    )
+
+    with patch("apps.pipeline.handlers.run_ffmpeg_web_transcode"):
+        handle_transcode(job)
+
+    short_recording.refresh_from_db()
+    clip = short_recording.clips.get()
+    assert short_recording.playback_path.endswith("__web.mp4")
+    assert clip.storage_path == short_recording.playback_path
+    assert clip.storage_path != original
+    # The original is still recorded on the video.
+    assert short_recording.source_path == original

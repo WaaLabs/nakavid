@@ -117,6 +117,17 @@ def handle_transcode(job: Job) -> None:
     video.playback_path = to_absolute_storage_path(storage_root, relative_playback)
     video.save(update_fields=["playback_path", "updated_at"])
 
+    if video.video_type == Video.VideoType.TYPE_B:
+        # A short recording is its own clip, and that clip pointed at the
+        # original file — so transcoding produced a browser-safe rendition
+        # nothing ever served. Extracted clips already point at their own
+        # playable file; point this one at its rendition too, which also keeps
+        # combine exports from mixing codecs.
+        clip = video.clips.order_by("id").first()
+        if clip is not None and clip.storage_path == video.source_path:
+            clip.storage_path = video.playback_path
+            clip.save(update_fields=["storage_path", "updated_at"])
+
     # A contact sheet only serves the tuning page, which tunes extraction from
     # long recordings. A short recording is already a clip, so it just needs a
     # score.
