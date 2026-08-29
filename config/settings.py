@@ -75,3 +75,7 @@ LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/clips/"
 
 NAKAVID_STORAGE_ROOT = Path(os.getenv("NAKAVID_STORAGE_ROOT", BASE_DIR / "data" / "nakavid"))
+
+# How long a claimed job may sit untouched before the queue assumes its
+# worker is gone. Must exceed the longest legitimate job.
+NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = int(os.getenv("NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES", "60"))

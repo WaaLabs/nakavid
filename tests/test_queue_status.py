@@ -154,3 +154,33 @@ def test_requeue_failed_job_requires_login(client, sample_video):
 
     assert response.status_code == 302
     assert response["Location"].startswith("/accounts/login/")
+
+
+@pytest.mark.django_db
+def test_queue_marks_a_job_whose_worker_is_gone(authenticated_client, sample_video, settings):
+    """A stranded job looked busy forever; now it is visibly stalled."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    settings.NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = 30
+    client, _user = authenticated_client
+    Job.objects.create(
+        video=sample_video,
+        job_type=Job.JobType.SCORE,
+        status=Job.Status.PROCESSING,
+        claimed_at=timezone.now() - timedelta(hours=2),
+    )
+    Job.objects.create(
+        video=sample_video,
+        job_type=Job.JobType.PROBE,
+        status=Job.Status.PROCESSING,
+        claimed_at=timezone.now() - timedelta(minutes=2),
+    )
+
+    response = client.get(reverse("queue-status"))
+    jobs = {job.job_type: job.is_stale for job in response.context["jobs"]}
+
+    assert jobs[Job.JobType.SCORE] is True
+    assert jobs[Job.JobType.PROBE] is False
+    assert "stalled" in response.content.decode()

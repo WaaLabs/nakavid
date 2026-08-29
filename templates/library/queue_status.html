@@ -3,7 +3,7 @@
 {% block title %}Queue — NakaVid{% endblock %}
 {% block heading %}Queue{% endblock %}
 {% block intro %}
-<p class="intro">Latest pipeline jobs for ingest, transcode, scoring, and clip extraction. Auto-refreshes every 10 seconds.</p>
+<p class="intro">Latest pipeline jobs for ingest, transcode, scoring, and clip extraction. Auto-refreshes every 10 seconds. A job whose worker goes away is returned to the queue automatically.</p>
 {% endblock %}
 
 {% block content %}
@@ -50,6 +50,9 @@
       <td>{{ job.get_job_type_display }}</td>
       <td>
         <span class="status-badge status-{{ job.status }}">{{ job.get_status_display }}</span>
+        {% if job.is_stale %}
+        <span class="status-badge status-error" title="Claimed longer than the {{ claim_timeout_minutes }} minute lease; the worker will return it to the queue.">stalled</span>
+        {% endif %}
       </td>
       <td>{{ job.video.title }}</td>
       <td>{{ job.video.class_name }} / {{ job.video.theme }}</td>

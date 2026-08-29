@@ -1,4 +1,5 @@
 import threading
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -210,3 +211,92 @@ def test_run_worker_once_exits_when_queue_empty(capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
+
+
+@pytest.mark.django_db
+def test_a_job_whose_worker_died_is_returned_to_the_queue(video, settings):
+    """Nothing released a claim when a worker went away, so work was stranded."""
+    from apps.pipeline.job_queue import reclaim_stale_jobs
+
+    settings.NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = 30
+    stranded = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.SCORE,
+        status=Job.Status.PROCESSING,
+        claimed_at=timezone.now() - timedelta(hours=2),
+    )
+
+    assert reclaim_stale_jobs() == 1
+
+    stranded.refresh_from_db()
+    assert stranded.status == Job.Status.PENDING
+    assert stranded.claimed_at is None
+    assert "Reclaimed" in stranded.stderr
+    # And it is claimable again.
+    assert claim_next_job().pk == stranded.pk
+
+
+@pytest.mark.django_db
+def test_a_job_still_within_its_lease_is_left_alone(video, settings):
+    """Scoring legitimately runs for minutes; reclaiming it would double the work."""
+    from apps.pipeline.job_queue import reclaim_stale_jobs
+
+    settings.NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = 60
+    running = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.SCORE,
+        status=Job.Status.PROCESSING,
+        claimed_at=timezone.now() - timedelta(minutes=10),
+    )
+
+    assert reclaim_stale_jobs() == 0
+
+    running.refresh_from_db()
+    assert running.status == Job.Status.PROCESSING
+
+
+@pytest.mark.django_db
+def test_finished_jobs_are_never_reclaimed(video, settings):
+    from apps.pipeline.job_queue import reclaim_stale_jobs
+
+    settings.NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = 1
+    done = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.PROBE,
+        status=Job.Status.DONE,
+        claimed_at=timezone.now() - timedelta(days=1),
+        finished_at=timezone.now() - timedelta(days=1),
+    )
+    failed = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.PROBE,
+        status=Job.Status.ERROR,
+        claimed_at=timezone.now() - timedelta(days=1),
+    )
+
+    assert reclaim_stale_jobs() == 0
+
+    done.refresh_from_db()
+    failed.refresh_from_db()
+    assert done.status == Job.Status.DONE
+    assert failed.status == Job.Status.ERROR
+
+
+@pytest.mark.django_db
+def test_worker_reclaims_on_startup(video, settings):
+    settings.NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = 30
+    stranded = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.CLIP_EXTRACTION,
+        status=Job.Status.PROCESSING,
+        claimed_at=timezone.now() - timedelta(hours=3),
+    )
+
+    with (
+        patch("apps.pipeline.handlers.run_ffmpeg_trim"),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
+        call_command("run_worker", once=True)
+
+    stranded.refresh_from_db()
+    assert stranded.status == Job.Status.DONE
