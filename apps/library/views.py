@@ -51,6 +51,7 @@ from apps.pipeline.enqueue import (
     enqueue_probe_job,
 )
 from apps.pipeline.extraction import select_clip_segments
+from apps.pipeline.job_queue import claim_timeout
 from apps.pipeline.models import Job, ScoringParams
 from apps.pipeline.scoring import (
     SIGNAL_NAMES,
@@ -341,12 +342,22 @@ def queue_status(request):
         status: sum(1 for job in jobs if job.status == status)
         for status, _label in Job.Status.choices
     }
+    # A claim held past its lease means the worker is gone. Say so, rather than
+    # leaving a row that looks busy forever.
+    cutoff = timezone.now() - claim_timeout()
+    for job in jobs:
+        job.is_stale = (
+            job.status == Job.Status.PROCESSING
+            and job.claimed_at is not None
+            and job.claimed_at < cutoff
+        )
     return render(
         request,
         "library/queue_status.html",
         {
             "jobs": jobs,
             "status_counts": status_counts,
+            "claim_timeout_minutes": int(claim_timeout().total_seconds() // 60),
         },
     )
 
