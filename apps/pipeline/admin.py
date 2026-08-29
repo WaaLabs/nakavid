@@ -63,6 +63,7 @@ class ScoringParamsAdmin(admin.ModelAdmin):
                     "window_size_seconds",
                     "step_seconds",
                     "smoothing_window_count",
+                    "frames_per_window",
                     "detect_max_width_pixels",
                     "face_scale_factor",
                     "face_min_neighbors",

@@ -228,6 +228,49 @@ DEFAULT_DETECTION = DetectionSettings(
 )
 
 
+def _load_audio_span(*, video_path: Path, start_seconds: float, end_seconds: float) -> np.ndarray:
+    try:
+        audio, _sample_rate = librosa.load(
+            str(video_path),
+            sr=None,
+            mono=True,
+            offset=start_seconds,
+            duration=max(end_seconds - start_seconds, 0.001),
+        )
+    except Exception as exc:
+        raise ScoringError(f"Unable to load audio for scoring: {exc}") from exc
+    return audio
+
+
+@dataclass
+class AudioTrack:
+    """A decoded span of audio, sliced per window rather than re-decoded.
+
+    Audio was re-decoded once per window: 86s across a 451s source, against
+    1.2s to decode it once. Scoring loads one track for the whole run.
+    """
+
+    samples: np.ndarray
+    sample_rate: int
+    offset_seconds: float
+
+    @classmethod
+    def load(cls, *, video_path: Path, start_seconds: float, end_seconds: float) -> AudioTrack:
+        samples, sample_rate = librosa.load(
+            str(video_path),
+            sr=None,
+            mono=True,
+            offset=start_seconds,
+            duration=max(end_seconds - start_seconds, 0.001),
+        )
+        return cls(samples=samples, sample_rate=int(sample_rate), offset_seconds=start_seconds)
+
+    def slice(self, *, start_seconds: float, end_seconds: float) -> np.ndarray:
+        begin = int(max(0.0, start_seconds - self.offset_seconds) * self.sample_rate)
+        finish = int(max(0.0, end_seconds - self.offset_seconds) * self.sample_rate)
+        return self.samples[begin:finish]
+
+
 def _count_smiles_in_faces(
     *, frame: np.ndarray, faces, smile_cascade, settings: DetectionSettings
 ) -> int:
@@ -298,15 +341,22 @@ def extract_window_signals(
     end_seconds: float,
     sampler: SequentialFrameSampler | None = None,
     settings: DetectionSettings = DEFAULT_DETECTION,
+    audio_track: AudioTrack | None = None,
+    frames_per_window: int = 12,
 ) -> WindowSignals:
     if sampler is None:
         frames = _sample_frames(
             video_path=video_path,
             start_seconds=start_seconds,
             end_seconds=end_seconds,
+            max_frames=frames_per_window,
         )
     else:
-        frames = sampler.frames_for(start_seconds=start_seconds, end_seconds=end_seconds)
+        frames = sampler.frames_for(
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+            max_frames=frames_per_window,
+        )
     if settings.max_width:
         frames = [_downscale_to_width(frame, settings.max_width) for frame in frames]
 
@@ -337,16 +387,12 @@ def extract_window_signals(
     frame_count = max(len(frames), 1)
     motion_pairs = max(len(frames) - 1, 1)
 
-    try:
-        audio, _sample_rate = librosa.load(
-            str(video_path),
-            sr=None,
-            mono=True,
-            offset=start_seconds,
-            duration=max(end_seconds - start_seconds, 0.001),
+    if audio_track is None:
+        audio = _load_audio_span(
+            video_path=video_path, start_seconds=start_seconds, end_seconds=end_seconds
         )
-    except Exception as exc:
-        raise ScoringError(f"Unable to load audio for scoring: {exc}") from exc
+    else:
+        audio = audio_track.slice(start_seconds=start_seconds, end_seconds=end_seconds)
 
     audio_rms = float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
     return WindowSignals(
@@ -450,6 +496,14 @@ def run_segment_scoring(
         raise ScoringError("Video duration must be positive before scoring")
 
     detection = DetectionSettings.from_params(params)
+    frames_per_window = max(1, int(params.frames_per_window))
+
+    try:
+        audio_track = AudioTrack.load(
+            video_path=video_path, start_seconds=0.0, end_seconds=float(duration_seconds)
+        )
+    except Exception as exc:
+        raise ScoringError(f"Unable to load audio for scoring: {exc}") from exc
 
     # One capture walked forward across every window, rather than one open
     # and twelve seeks per window.
@@ -462,6 +516,8 @@ def run_segment_scoring(
                 end_seconds=end_seconds,
                 sampler=sampler,
                 settings=detection,
+                audio_track=audio_track,
+                frames_per_window=frames_per_window,
             )
 
         return score_windows(
