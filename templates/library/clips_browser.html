@@ -20,6 +20,10 @@
     <label for="id_min_score">Min score</label>
     {{ form.min_score }}
   </div>
+  <div class="field">
+    <label for="id_source">Source</label>
+    {{ form.source }}
+  </div>
   <div class="actions">
     <button type="submit">Filter</button>
     <a class="button secondary" href="{% url 'clips-browser' %}">Clear</a>
@@ -34,7 +38,7 @@
 <div class="card-grid">
   {% for clip in clips %}
   <article class="card">
-    <div class="card__media">
+    <div class="card__media"{% if clip.video.width and clip.video.height %} style="--card-aspect: {{ clip.video.width }} / {{ clip.video.height }}"{% endif %}>
       <video
         controls
         preload="none"
@@ -50,7 +54,10 @@
         {{ clip.video.title }}
         {% endif %}
       </h2>
-      <p class="card__meta">{{ clip.video.class_name }} · {{ clip.video.theme }}</p>
+      <p class="card__meta">
+        {{ clip.video.class_name }} · {{ clip.video.theme }}
+        <span class="badge badge--source">{% if clip.video.is_long_recording %}extracted{% else %}uploaded{% endif %}</span>
+      </p>
       <p class="card__meta card__timecode">
         {{ clip.source_range_label }} <span class="card__timecode-of">in source</span>
       </p>

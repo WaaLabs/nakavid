@@ -253,3 +253,49 @@ def test_process_job_probe_failure_sets_error_stderr(storage_root, user):
     assert job.status == Job.Status.ERROR
     assert job.stderr == "Invalid data found when processing input"
     assert job.finished_at is not None
+
+
+def test_rotation_is_read_from_the_display_matrix():
+    """Phones store portrait as a landscape frame plus a rotation matrix."""
+    from apps.pipeline.probe import rotation_degrees
+
+    assert rotation_degrees({"side_data_list": [{"rotation": -90}]}) == 270
+    assert rotation_degrees({"side_data_list": [{"rotation": 90}]}) == 90
+    assert rotation_degrees({"tags": {"rotate": "180"}}) == 180
+    assert rotation_degrees({}) == 0
+    assert rotation_degrees({"side_data_list": [{"rotation": "nonsense"}]}) == 0
+
+
+def test_a_quarter_turn_swaps_the_display_dimensions():
+    from apps.pipeline.probe import display_dimensions
+
+    assert display_dimensions(width=1920, height=1080, rotation=0) == (1920, 1080)
+    assert display_dimensions(width=1920, height=1080, rotation=90) == (1080, 1920)
+    assert display_dimensions(width=1920, height=1080, rotation=270) == (1080, 1920)
+    assert display_dimensions(width=1920, height=1080, rotation=180) == (1920, 1080)
+
+
+def test_rotated_source_is_recorded_as_portrait():
+    """The bug: a rotated phone clip was stored as landscape."""
+    from apps.library.models import Video
+    from apps.pipeline.probe import parse_ffprobe_payload
+
+    payload = {
+        "format": {"duration": "12.5"},
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "hevc",
+                "width": 1920,
+                "height": 1080,
+                "pix_fmt": "yuv420p10le",
+                "side_data_list": [{"rotation": -90}],
+            }
+        ],
+    }
+
+    result = parse_ffprobe_payload(payload)
+
+    assert result.orientation == Video.Orientation.PORTRAIT
+    assert (result.width, result.height) == (1080, 1920)
+    assert result.rotation == 270

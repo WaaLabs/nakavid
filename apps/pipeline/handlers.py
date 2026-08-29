@@ -12,6 +12,7 @@ from apps.library.storage_paths import (
     build_contact_sheet_relative_path,
     build_highlight_relative_paths,
     build_playback_relative_path,
+    build_short_thumbnail_relative_path,
     to_absolute_storage_path,
 )
 from apps.pipeline.combine_export import CombineExportError, run_ffmpeg_concat
@@ -86,15 +87,19 @@ def handle_probe(job: Job) -> None:
             if clip is not None:
                 clip.end_seconds = Decimal(probe_result.duration_seconds)
                 clip.save(update_fields=["end_seconds", "updated_at"])
-        elif video.video_type == Video.VideoType.TYPE_A:
-            if needs_web_transcode(
-                codec_name=probe_result.video_codec,
-                pixel_format=probe_result.pixel_format,
-            ):
-                enqueue_transcode_job(video=video)
-            else:
+
+        # Both types need a browser-safe rendition and a score. Short
+        # recordings used to get neither: a phone clip in 10-bit HEVC stayed
+        # unplayable, and with no score there was nothing to sort or filter on.
+        if needs_web_transcode(
+            codec_name=probe_result.video_codec,
+            pixel_format=probe_result.pixel_format,
+        ):
+            enqueue_transcode_job(video=video)
+        else:
+            if video.video_type == Video.VideoType.TYPE_A:
                 enqueue_contact_sheet_job(video=video)
-                enqueue_score_job(video=video)
+            enqueue_score_job(video=video)
 
 
 def handle_transcode(job: Job) -> None:
@@ -112,7 +117,11 @@ def handle_transcode(job: Job) -> None:
     video.playback_path = to_absolute_storage_path(storage_root, relative_playback)
     video.save(update_fields=["playback_path", "updated_at"])
 
-    enqueue_contact_sheet_job(video=video)
+    # A contact sheet only serves the tuning page, which tunes extraction from
+    # long recordings. A short recording is already a clip, so it just needs a
+    # score.
+    if video.video_type == Video.VideoType.TYPE_A:
+        enqueue_contact_sheet_job(video=video)
     enqueue_score_job(video=video)
 
 
@@ -255,12 +264,60 @@ def handle_clip_extraction(job: Job) -> None:
                 clip.tags.set(video_tag_ids)
 
 
+def _score_short_recording(*, video: Video, params) -> None:
+    """Score a short recording in place — it is already its own clip.
+
+    No extraction follows, because there is nothing to cut. The score exists so
+    short recordings can be sorted and filtered alongside extracted clips, and
+    so Nebla has a ranking signal for them later.
+    """
+    result = run_segment_scoring(
+        video_path=_playback_file_path(video),
+        params=params,
+        duration_seconds=video.duration_seconds,
+    )
+
+    clip = video.clips.order_by("id").first()
+    thumbnail_path = ""
+    if clip is not None and not clip.thumbnail_path:
+        relative_thumbnail = build_short_thumbnail_relative_path(
+            _storage_path_to_relative(video.source_path)
+        )
+        storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+        run_ffmpeg_thumbnail(
+            source_path=_playback_file_path(video),
+            target_path=storage_root / relative_thumbnail,
+            at_seconds=max(0.0, video.duration_seconds / 2.0),
+        )
+        thumbnail_path = to_absolute_storage_path(storage_root, relative_thumbnail)
+
+    with transaction.atomic():
+        video.energy_curve = result.energy_curve
+        video.highlight_score = result.highlight_score
+        video.save(update_fields=["energy_curve", "highlight_score", "updated_at"])
+
+        if clip is not None:
+            clip.highlight_score = result.highlight_score
+            clip.energy_curve = result.energy_curve
+            if thumbnail_path:
+                clip.thumbnail_path = thumbnail_path
+            clip.save(
+                update_fields=[
+                    "highlight_score",
+                    "energy_curve",
+                    "thumbnail_path",
+                    "updated_at",
+                ]
+            )
+
+
 def handle_score(job: Job) -> None:
     video = job.video
-    if video.video_type != Video.VideoType.TYPE_A:
+    params = scoring_params_from_job(job)
+    if video.video_type == Video.VideoType.TYPE_B:
+        _score_short_recording(video=video, params=params)
         return
 
-    params = scoring_params_from_job(job)
     result = run_segment_scoring(
         video_path=_video_file_path(video),
         params=params,

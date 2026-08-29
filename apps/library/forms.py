@@ -45,8 +45,15 @@ class SourceVideosFilterForm(forms.Form):
 
 
 class ClipsBrowserFilterForm(forms.Form):
+    SOURCE_CHOICES = (
+        ("", "All clips"),
+        ("extracted", "Extracted from a long recording"),
+        ("uploaded", "Uploaded as a short recording"),
+    )
+
     class_name = forms.CharField(max_length=120, required=False, label="Class")
     recorded_date = forms.DateField(required=False, label="Date")
+    source = forms.ChoiceField(choices=SOURCE_CHOICES, required=False, label="Source")
     min_score = forms.IntegerField(
         required=False,
         min_value=0,

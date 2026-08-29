@@ -40,7 +40,7 @@
   <div class="card-grid">
     {% for clip in clips %}
     <article class="card" id="clip-{{ clip.id }}">
-      <div class="card__media">
+      <div class="card__media"{% if video.width and video.height %} style="--card-aspect: {{ video.width }} / {{ video.height }}"{% endif %}>
         <video
           controls
           preload="none"
