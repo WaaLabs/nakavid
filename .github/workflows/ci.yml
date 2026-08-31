@@ -55,10 +55,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-groups
 
+      - name: Install island dependencies
+        run: npm ci --prefix frontend
+
+      - name: Island tests
+        run: npm test --prefix frontend
+
       - name: Build React islands
-        run: |
-          npm ci --prefix frontend
-          npm run build --prefix frontend
+        run: npm run build --prefix frontend
 
       - name: Django system checks
         run: uv run python3 manage.py check

@@ -92,6 +92,8 @@ Two convention sets, by side of the seam:
 
 - Cover everything **deterministic**: ffprobe parse, window-slicing, trim/encode, thumbnail generation, storage-path encode/decode, clip-row insertion, the job-claim (SKIP LOCKED) logic, the stream route's auth/redirect handoff.
 - **pytest + pytest-django.** Run the narrowest covering set: `pytest tests/<path> -k <pattern>`. Add tests for new behaviour. Keep coverage **≥ 70%**.
+- **Islands: vitest + Testing Library**, run with `npm test --prefix frontend`. The islands had no coverage at all, which is how a component styled entirely with Tailwind utilities — in a project with no Tailwind — shipped with none of its rules applying. `src/test/styles.ts` asserts every rendered class name is defined by some stylesheet; keep using it.
+- **Mocking ffmpeg hides real defects.** Tests that patch `subprocess` and assert command shape passed while the pipeline produced unplayable clips, black video and a 1h44m combine from 125s of input. For anything that produces media, run the real binary and `ffprobe` the output.
 - **CI-green is the merge gate.** Red tests = not done.
 
 ## Database / migrations (follow exactly — the classic footguns)
