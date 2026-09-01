@@ -791,3 +791,27 @@ tbody tr:last-child td {
   border-color: var(--nv-border);
   margin-left: 0.35rem;
 }
+
+/* ---------- pagination ---------- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--nv-border);
+}
+
+.pagination__count {
+  color: var(--nv-text-muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.button.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}

@@ -8,6 +8,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count
 from django.http import Http404, HttpResponse, JsonResponse
@@ -255,6 +256,23 @@ def type_b_ingest(request):
     return render(request, "library/type_b_ingest.html", {"form": form})
 
 
+# Browse pages render a <video> element per card, so an unbounded queryset is
+# not merely a long page — it is hundreds of media elements the browser must
+# set up. Kept modest for that reason rather than to spare the database.
+PAGE_SIZE = 24
+
+
+def paginate(request, queryset, *, per_page: int = PAGE_SIZE):
+    """One page of results, plus the querystring needed to keep filters.
+
+    Page links must carry the active filters, or paging quietly resets them.
+    """
+    page = Paginator(queryset, per_page).get_page(request.GET.get("page"))
+    params = request.GET.copy()
+    params.pop("page", None)
+    return page, params.urlencode()
+
+
 def _filtered_source_videos(*, form: SourceVideosFilterForm):
     videos = Video.objects.filter(video_type=Video.VideoType.TYPE_A).order_by(
         "-recorded_at",
@@ -274,12 +292,13 @@ def _filtered_source_videos(*, form: SourceVideosFilterForm):
 def source_videos(request):
     form = SourceVideosFilterForm(request.GET)
     videos = _filtered_source_videos(form=form) if form.is_valid() else Video.objects.none()
+    page, querystring = paginate(request, videos)
     video_rows = [
         {
             "video": video,
             "duration_label": format_duration_seconds(video.duration_seconds),
         }
-        for video in videos
+        for video in page
     ]
 
     return render(
@@ -288,6 +307,8 @@ def source_videos(request):
         {
             "form": form,
             "video_rows": video_rows,
+            "page": page,
+            "querystring": querystring,
         },
     )
 
@@ -418,13 +439,16 @@ def _filtered_clips(*, form: ClipsBrowserFilterForm):
 def clips_browser(request):
     form = ClipsBrowserFilterForm(request.GET)
     clips = _filtered_clips(form=form) if form.is_valid() else Clip.objects.none()
+    page, querystring = paginate(request, clips)
 
     return render(
         request,
         "library/clips_browser.html",
         {
             "form": form,
-            "clips": clips,
+            "clips": page,
+            "page": page,
+            "querystring": querystring,
         },
     )
 
@@ -784,7 +808,12 @@ def combines(request):
         .order_by("-created_at", "-id")
         .annotate(clip_count=Count("combine_clips"))
     )
-    return render(request, "library/combines.html", {"combines": rows})
+    page, querystring = paginate(request, rows)
+    return render(
+        request,
+        "library/combines.html",
+        {"combines": page, "page": page, "querystring": querystring},
+    )
 
 
 @login_required
