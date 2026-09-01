@@ -25,6 +25,7 @@ from django.conf import settings
 
 TIMEOUT_SECONDS = 30
 DOWNLOAD_CHUNK_BYTES = 1024 * 1024
+SEARCH_PAGE_SIZE = 250
 
 
 class ImmichError(RuntimeError):
@@ -89,6 +90,19 @@ class ImmichClient:
             headers={"x-api-key": self.api_key, "Accept": "application/json"},
         )
 
+    def _post_json(self, path: str, body: dict):
+        request = self._request(path)
+        request.data = json.dumps(body).encode("utf-8")
+        request.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = "check the API key" if exc.code in (401, 403) else exc.reason
+            raise ImmichError(f"Immich {path} returned {exc.code}: {detail}") from exc
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise ImmichError(f"Immich {path} failed: {exc}") from exc
+
     def _get_json(self, path: str):
         try:
             with urllib.request.urlopen(self._request(path), timeout=TIMEOUT_SECONDS) as response:
@@ -132,19 +146,41 @@ class ImmichClient:
         return matches[0]
 
     def album_assets(self, album_id: str) -> list[ImmichAsset]:
-        payload = self._get_json(f"/api/albums/{album_id}")
-        assets = payload.get("assets") if isinstance(payload, dict) else None
-        if assets is None:
-            raise ImmichError(f"Immich album {album_id} returned no asset list")
-        return [
-            ImmichAsset(
-                id=str(asset.get("id", "")),
-                original_file_name=str(asset.get("originalFileName") or asset.get("id", "")),
-                created_at=str(asset.get("fileCreatedAt") or asset.get("createdAt") or ""),
-                is_video=str(asset.get("type", "")).upper() == "VIDEO",
+        """Videos in an album, via metadata search.
+
+        GET /api/albums/{id} does not carry an asset list — verified against
+        Immich v3.1.0, where it returns album metadata only. Searching by
+        albumId is the supported route, and it filters to videos server-side
+        rather than fetching every photo to discard it here.
+        """
+        assets: list[ImmichAsset] = []
+        page = 1
+        while True:
+            payload = self._post_json(
+                "/api/search/metadata",
+                {"albumIds": [album_id], "type": "VIDEO", "size": SEARCH_PAGE_SIZE, "page": page},
             )
-            for asset in assets
-        ]
+            block = payload.get("assets") if isinstance(payload, dict) else None
+            if block is None:
+                raise ImmichError(f"Immich search for album {album_id} returned no assets block")
+            for asset in block.get("items") or []:
+                assets.append(
+                    ImmichAsset(
+                        id=str(asset.get("id", "")),
+                        original_file_name=str(
+                            asset.get("originalFileName") or asset.get("id", "")
+                        ),
+                        created_at=str(asset.get("fileCreatedAt") or asset.get("createdAt") or ""),
+                        is_video=str(asset.get("type", "")).upper() == "VIDEO",
+                    )
+                )
+            next_page = block.get("nextPage")
+            if not next_page:
+                return assets
+            try:
+                page = int(next_page)
+            except (TypeError, ValueError):
+                return assets
 
     def download_asset(self, asset_id: str, target_path: Path) -> None:
         """Stream an original to disk. These are gigabytes; never buffer them."""

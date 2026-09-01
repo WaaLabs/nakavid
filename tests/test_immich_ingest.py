@@ -231,3 +231,56 @@ def test_an_album_listed_twice_is_not_duplicated():
 
     assert len(client.albums()) == 1
     assert client.album_named("nakavid")["id"] == "both-1"
+
+
+def test_album_assets_pages_through_search_results():
+    """Search is paginated; a large album must not stop at the first page."""
+    client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
+    seen: list[dict] = []
+
+    def fake_post(path, body):
+        seen.append(body)
+        if body["page"] == 1:
+            return {
+                "assets": {
+                    "items": [
+                        {
+                            "id": "a1",
+                            "type": "VIDEO",
+                            "originalFileName": "one.mov",
+                            "fileCreatedAt": "2026-05-04T10:30:00Z",
+                        }
+                    ],
+                    "nextPage": 2,
+                }
+            }
+        return {
+            "assets": {
+                "items": [
+                    {
+                        "id": "a2",
+                        "type": "VIDEO",
+                        "originalFileName": "two.mov",
+                        "fileCreatedAt": "2026-05-05T10:30:00Z",
+                    }
+                ],
+                "nextPage": None,
+            }
+        }
+
+    client._post_json = fake_post  # type: ignore[method-assign]
+    assets = client.album_assets("album-1")
+
+    assert [asset.id for asset in assets] == ["a1", "a2"]
+    assert [body["page"] for body in seen] == [1, 2]
+    # Videos are filtered server-side rather than fetching every photo.
+    assert all(body["type"] == "VIDEO" for body in seen)
+    assert all(body["albumIds"] == ["album-1"] for body in seen)
+
+
+def test_album_assets_reports_an_unexpected_payload():
+    client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
+    client._post_json = lambda path, body: {"unexpected": True}  # type: ignore[method-assign]
+
+    with pytest.raises(ImmichError, match="no assets block"):
+        client.album_assets("album-1")
