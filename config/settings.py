@@ -79,3 +79,8 @@ NAKAVID_STORAGE_ROOT = Path(os.getenv("NAKAVID_STORAGE_ROOT", BASE_DIR / "data" 
 # How long a claimed job may sit untouched before the queue assumes its
 # worker is gone. Must exceed the longest legitimate job.
 NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = int(os.getenv("NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES", "60"))
+
+# Self-hosted Immich to pull footage from. Must be on the LAN — the client
+# refuses a host that does not resolve to a private address.
+NAKAVID_IMMICH_URL = os.getenv("NAKAVID_IMMICH_URL", "")
+NAKAVID_IMMICH_API_KEY = os.getenv("NAKAVID_IMMICH_API_KEY", "")
