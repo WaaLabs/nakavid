@@ -32,6 +32,9 @@ class Video(models.Model):
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)
     is_private = models.BooleanField(default=True)
+    # Set when a video was pulled from Immich. Immich's asset id is the only
+    # stable identity across re-runs — two assets can share a filename.
+    immich_asset_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
     # Whole-video per-window signals from the scoring stage. Kept on the video
     # so selection can be re-run — and re-tuned — without re-scoring, which is
     # the expensive half. Clips carry their own slice of this.
