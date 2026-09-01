@@ -100,10 +100,23 @@ class ImmichClient:
             raise ImmichError(f"Immich {path} failed: {exc}") from exc
 
     def albums(self) -> list[dict]:
-        payload = self._get_json("/api/albums")
-        if not isinstance(payload, list):
-            raise ImmichError("Immich /api/albums did not return a list")
-        return payload
+        """Albums this key can see: its own, plus ones shared with it.
+
+        /api/albums returns only owned albums. An album shared from another
+        account — the ordinary case when footage is filmed on one login and
+        collected under another — is invisible without ?shared=true, so asking
+        for the album by name would report that it does not exist.
+        """
+        found: dict[str, dict] = {}
+        for path in ("/api/albums", "/api/albums?shared=true"):
+            payload = self._get_json(path)
+            if not isinstance(payload, list):
+                raise ImmichError(f"Immich {path} did not return a list")
+            for album in payload:
+                album_id = str(album.get("id", ""))
+                if album_id:
+                    found.setdefault(album_id, album)
+        return list(found.values())
 
     def album_named(self, name: str) -> dict:
         matches = [

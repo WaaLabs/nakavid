@@ -201,3 +201,33 @@ def test_a_missing_api_key_says_where_to_get_one(settings):
 
     with pytest.raises(ImmichError, match="Account Settings"):
         configured_api_key()
+
+
+def _client_with_responses(responses: dict[str, object]) -> ImmichClient:
+    client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
+    client._get_json = lambda path: responses[path]  # type: ignore[method-assign]
+    return client
+
+
+def test_albums_include_ones_shared_from_another_account():
+    """Footage filmed on one login is often collected under another."""
+    client = _client_with_responses(
+        {
+            "/api/albums": [{"id": "own-1", "albumName": "My Stuff"}],
+            "/api/albums?shared=true": [{"id": "shared-1", "albumName": "nakavid"}],
+        }
+    )
+
+    names = {album["albumName"] for album in client.albums()}
+
+    assert names == {"My Stuff", "nakavid"}
+    assert client.album_named("nakavid")["id"] == "shared-1"
+
+
+def test_an_album_listed_twice_is_not_duplicated():
+    """A shared album you also own must not look like two albums."""
+    album = {"id": "both-1", "albumName": "nakavid"}
+    client = _client_with_responses({"/api/albums": [album], "/api/albums?shared=true": [album]})
+
+    assert len(client.albums()) == 1
+    assert client.album_named("nakavid")["id"] == "both-1"
