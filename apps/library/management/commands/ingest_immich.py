@@ -1,7 +1,11 @@
-"""Pull videos from an Immich album into the library.
+"""Pull tagged videos from Immich into the library.
 
 Footage already arrives in Immich by phone backup, so this is usually the
 shortest path from filming something to having it scored — no second upload.
+Tag whatever is ready to import with Nakavid/add in Immich, then run this;
+only videos carrying that tag are pulled. Once a video is safely imported,
+its tag moves from Nakavid/add to Nakavid/imported, so it doesn't sit there
+looking ready to pull all over again on the next run.
 """
 
 from __future__ import annotations
@@ -39,11 +43,27 @@ def _recorded_at(raw: str) -> datetime:
     return timezone.now()
 
 
+DEFAULT_TAG = "Nakavid/add"
+DEFAULT_IMPORTED_TAG = "Nakavid/imported"
+
+
 class Command(BaseCommand):
-    help = "Ingest the videos in an Immich album."
+    help = "Ingest Immich videos tagged for import."
 
     def add_arguments(self, parser) -> None:
-        parser.add_argument("--album", required=True, help="Immich album name.")
+        parser.add_argument(
+            "--tag",
+            default=DEFAULT_TAG,
+            help=f"Immich tag (full path) to pull videos from. Default: {DEFAULT_TAG!r}.",
+        )
+        parser.add_argument(
+            "--imported-tag",
+            default=DEFAULT_IMPORTED_TAG,
+            help=(
+                "Immich tag (full path) to move a video to once it's imported. "
+                f"Default: {DEFAULT_IMPORTED_TAG!r}."
+            ),
+        )
         parser.add_argument("--class-name", required=True)
         parser.add_argument("--theme", required=True)
         parser.add_argument("--type", choices=["long", "short"], default="long")
@@ -80,20 +100,19 @@ class Command(BaseCommand):
 
         try:
             client = ImmichClient()
-            album = client.album_named(options["album"])
-            assets = client.album_assets(str(album["id"]))
+            tag = client.tag_named(options["tag"])
+            assets = client.tagged_assets(str(tag["id"]))
         except ImmichError as exc:
             raise CommandError(str(exc)) from exc
 
         videos = [asset for asset in assets if asset.is_video]
-        self.stdout.write(
-            f"album {options['album']!r}: {len(assets)} asset(s), {len(videos)} video(s)"
-        )
+        self.stdout.write(f"tag {options['tag']!r}: {len(assets)} asset(s), {len(videos)} video(s)")
 
         already = set(
             Video.objects.exclude(immich_asset_id="").values_list("immich_asset_id", flat=True)
         )
         pulled = skipped = 0
+        imported_asset_ids: list[str] = []
         for asset in videos:
             if asset.id in already:
                 skipped += 1
@@ -148,6 +167,32 @@ class Command(BaseCommand):
                     )
                 enqueue_probe_job(video=video)
             pulled += 1
+            imported_asset_ids.append(asset.id)
 
         verb = "would pull" if dry_run else "pulled"
         self.stdout.write(f"{verb} {pulled} video(s), skipped {skipped} already in the library")
+
+        if imported_asset_ids:
+            self._retag_imported(
+                client, options["imported_tag"], str(tag["id"]), imported_asset_ids
+            )
+
+    def _retag_imported(
+        self, client: ImmichClient, imported_tag_name: str, source_tag_id: str, asset_ids: list[str]
+    ) -> None:
+        """Move freshly-imported assets from the source tag to the imported one.
+
+        Best-effort: the videos are already safely in NakaVid by this point,
+        so a hiccup here is a warning, not a reason to fail the whole run.
+        """
+        try:
+            imported_tag = client.upsert_tag(imported_tag_name)
+            client.tag_assets(str(imported_tag["id"]), asset_ids)
+            client.untag_assets(source_tag_id, asset_ids)
+        except ImmichError as exc:
+            self.stderr.write(
+                f"warning: imported {len(asset_ids)} video(s) but could not retag them in "
+                f"Immich ({imported_tag_name!r}): {exc}"
+            )
+            return
+        self.stdout.write(f"retagged {len(asset_ids)} video(s) as {imported_tag_name!r} in Immich")
