@@ -106,9 +106,7 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
 
         videos = [asset for asset in assets if asset.is_video]
-        self.stdout.write(
-            f"tag {options['tag']!r}: {len(assets)} asset(s), {len(videos)} video(s)"
-        )
+        self.stdout.write(f"tag {options['tag']!r}: {len(assets)} asset(s), {len(videos)} video(s)")
 
         already = set(
             Video.objects.exclude(immich_asset_id="").values_list("immich_asset_id", flat=True)

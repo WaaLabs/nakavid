@@ -138,9 +138,7 @@ class ImmichClient:
         under 'Nakavid'.
         """
         tags = self.tags()
-        matches = [
-            tag for tag in tags if str(tag.get("value", "")).casefold() == value.casefold()
-        ]
+        matches = [tag for tag in tags if str(tag.get("value", "")).casefold() == value.casefold()]
         if not matches:
             available = ", ".join(sorted(str(t.get("value", "?")) for t in tags))
             raise ImmichError(f"No Immich tag named {value!r}. Available: {available or 'none'}")
