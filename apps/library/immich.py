@@ -1,9 +1,14 @@
-"""A minimal read-only client for a self-hosted Immich instance.
+"""A minimal client for a self-hosted Immich instance.
 
 Immich is where footage already lands — phones back up to it automatically —
-so pulling from an album beats uploading the same file a second time by hand.
+so pulling footage tagged for import there beats uploading the same file a
+second time by hand.
 
-This reads and never writes. Immich stays the inbox; NakaVid owns the library.
+Footage itself is read-only: nothing here ever uploads or modifies an asset's
+media. Immich stays the inbox; NakaVid owns the library. The one write is
+tag housekeeping — once an asset is safely imported, its tag moves from
+Nakavid/add to Nakavid/imported, so it doesn't keep showing up as ready to
+pull.
 
 Privacy: the instance must be on the LAN, per the AGENTS.md rule that footage
 never leaves it. configured_base_url refuses anything that does not resolve to
@@ -90,18 +95,23 @@ class ImmichClient:
             headers={"x-api-key": self.api_key, "Accept": "application/json"},
         )
 
-    def _post_json(self, path: str, body: dict):
+    def _send_json(self, method: str, path: str, body: dict):
         request = self._request(path)
+        request.method = method
         request.data = json.dumps(body).encode("utf-8")
         request.add_header("Content-Type", "application/json")
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-                return json.loads(response.read().decode("utf-8"))
+                raw = response.read()
+            return json.loads(raw) if raw else None
         except urllib.error.HTTPError as exc:
             detail = "check the API key" if exc.code in (401, 403) else exc.reason
-            raise ImmichError(f"Immich {path} returned {exc.code}: {detail}") from exc
+            raise ImmichError(f"Immich {method} {path} returned {exc.code}: {detail}") from exc
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise ImmichError(f"Immich {path} failed: {exc}") from exc
+            raise ImmichError(f"Immich {method} {path} failed: {exc}") from exc
+
+    def _post_json(self, path: str, body: dict):
+        return self._send_json("POST", path, body)
 
     def _get_json(self, path: str):
         try:
@@ -113,56 +123,77 @@ class ImmichClient:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise ImmichError(f"Immich {path} failed: {exc}") from exc
 
-    def albums(self) -> list[dict]:
-        """Albums this key can see: its own, plus ones shared with it.
+    def tags(self) -> list[dict]:
+        """All tags this key can see."""
+        payload = self._get_json("/api/tags")
+        if not isinstance(payload, list):
+            raise ImmichError("Immich /api/tags did not return a list")
+        return payload
 
-        /api/albums returns only owned albums. An album shared from another
-        account — the ordinary case when footage is filmed on one login and
-        collected under another — is invisible without ?shared=true, so asking
-        for the album by name would report that it does not exist.
+    def tag_named(self, value: str) -> dict:
+        """A tag by its full path, e.g. 'Nakavid/add' for a nested tag.
+
+        Immich reports a tag's full hierarchical path in its 'value' field,
+        not just the leaf name, so 'add' alone would not match a tag nested
+        under 'Nakavid'.
         """
-        found: dict[str, dict] = {}
-        for path in ("/api/albums", "/api/albums?shared=true"):
-            payload = self._get_json(path)
-            if not isinstance(payload, list):
-                raise ImmichError(f"Immich {path} did not return a list")
-            for album in payload:
-                album_id = str(album.get("id", ""))
-                if album_id:
-                    found.setdefault(album_id, album)
-        return list(found.values())
-
-    def album_named(self, name: str) -> dict:
+        tags = self.tags()
         matches = [
-            album
-            for album in self.albums()
-            if str(album.get("albumName", "")).casefold() == name.casefold()
+            tag for tag in tags if str(tag.get("value", "")).casefold() == value.casefold()
         ]
         if not matches:
-            available = ", ".join(sorted(str(a.get("albumName", "?")) for a in self.albums()))
-            raise ImmichError(f"No Immich album named {name!r}. Available: {available or 'none'}")
+            available = ", ".join(sorted(str(t.get("value", "?")) for t in tags))
+            raise ImmichError(f"No Immich tag named {value!r}. Available: {available or 'none'}")
         if len(matches) > 1:
-            raise ImmichError(f"More than one Immich album is named {name!r}")
+            raise ImmichError(f"More than one Immich tag is named {value!r}")
         return matches[0]
 
-    def album_assets(self, album_id: str) -> list[ImmichAsset]:
-        """Videos in an album, via metadata search.
+    def upsert_tag(self, value: str) -> dict:
+        """Get-or-create a tag by its full path, e.g. 'Nakavid/imported'.
 
-        GET /api/albums/{id} does not carry an asset list — verified against
-        Immich v3.1.0, where it returns album metadata only. Searching by
-        albumId is the supported route, and it filters to videos server-side
-        rather than fetching every photo to discard it here.
+        PUT /api/tags upserts: an existing tag comes back unchanged, a
+        missing one — and any missing parent segment — is created. Simpler
+        and cheaper than resolving 'Nakavid' and 'imported' as two calls.
+        """
+        payload = self._send_json("PUT", "/api/tags", {"tags": [value]})
+        if not isinstance(payload, list):
+            raise ImmichError("Immich PUT /api/tags did not return a list")
+        matches = [
+            tag for tag in payload if str(tag.get("value", "")).casefold() == value.casefold()
+        ]
+        if not matches:
+            raise ImmichError(f"Immich did not return the upserted tag {value!r}")
+        return matches[0]
+
+    def tag_assets(self, tag_id: str, asset_ids: list[str]) -> None:
+        """Attach a tag to assets, in one call."""
+        if not asset_ids:
+            return
+        self._send_json("PUT", f"/api/tags/{tag_id}/assets", {"ids": asset_ids})
+
+    def untag_assets(self, tag_id: str, asset_ids: list[str]) -> None:
+        """Remove a tag from assets, in one call."""
+        if not asset_ids:
+            return
+        self._send_json("DELETE", f"/api/tags/{tag_id}/assets", {"ids": asset_ids})
+
+    def tagged_assets(self, tag_id: str) -> list[ImmichAsset]:
+        """Videos carrying a tag, via metadata search.
+
+        Searching by tagId filters to videos server-side rather than fetching
+        every photo just to discard it here — the same route album_assets
+        used before tags replaced albums as the selection mechanism.
         """
         assets: list[ImmichAsset] = []
         page = 1
         while True:
             payload = self._post_json(
                 "/api/search/metadata",
-                {"albumIds": [album_id], "type": "VIDEO", "size": SEARCH_PAGE_SIZE, "page": page},
+                {"tagIds": [tag_id], "type": "VIDEO", "size": SEARCH_PAGE_SIZE, "page": page},
             )
             block = payload.get("assets") if isinstance(payload, dict) else None
             if block is None:
-                raise ImmichError(f"Immich search for album {album_id} returned no assets block")
+                raise ImmichError(f"Immich search for tag {tag_id} returned no assets block")
             for asset in block.get("items") or []:
                 assets.append(
                     ImmichAsset(

@@ -1,4 +1,4 @@
-"""Pulling footage from a self-hosted Immich album."""
+"""Pulling footage tagged for import from a self-hosted Immich instance."""
 
 from __future__ import annotations
 
@@ -53,40 +53,136 @@ ASSETS = [
 ]
 
 
+def _fake_download(self, asset_id, target_path):
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_bytes(b"video bytes")
+
+
 def _run(**kwargs):
     out = StringIO()
     downloads: list[tuple[str, Path]] = []
+    retags: dict[str, list] = {"tagged": [], "untagged": []}
 
     def fake_download(self, asset_id, target_path):
         downloads.append((asset_id, target_path))
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_bytes(b"video bytes")
+        _fake_download(self, asset_id, target_path)
+
+    def fake_tag_assets(self, tag_id, asset_ids):
+        retags["tagged"].append((tag_id, list(asset_ids)))
+
+    def fake_untag_assets(self, tag_id, asset_ids):
+        retags["untagged"].append((tag_id, list(asset_ids)))
 
     with (
-        patch.object(ImmichClient, "album_named", return_value={"id": "album-1"}),
-        patch.object(ImmichClient, "album_assets", return_value=ASSETS),
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}),
+        patch.object(ImmichClient, "tagged_assets", return_value=ASSETS),
         patch.object(ImmichClient, "download_asset", fake_download),
+        patch.object(ImmichClient, "upsert_tag", return_value={"id": "imported-tag-1"}),
+        patch.object(ImmichClient, "tag_assets", fake_tag_assets),
+        patch.object(ImmichClient, "untag_assets", fake_untag_assets),
     ):
         call_command(
             "ingest_immich",
-            album="nakavid",
             class_name="Quokka",
             theme="Lesson",
             stdout=out,
             **kwargs,
         )
-    return out.getvalue(), downloads
+    return out.getvalue(), downloads, retags
 
 
 @pytest.mark.django_db
 def test_pulls_only_the_videos(storage_root, superuser):
-    output, downloads = _run()
+    output, downloads, _ = _run()
 
     assert Video.objects.count() == 2
     assert {asset_id for asset_id, _ in downloads} == {"asset-1", "asset-2"}
-    # The photo in the album is left alone.
+    # The photo carrying the tag is left alone.
     assert "snap.jpg" not in output
     assert "3 asset(s), 2 video(s)" in output
+
+
+@pytest.mark.django_db
+def test_imported_videos_are_retagged_in_immich(storage_root, superuser):
+    output, _, retags = _run()
+
+    assert retags["tagged"] == [("imported-tag-1", ["asset-1", "asset-2"])]
+    assert retags["untagged"] == [("tag-1", ["asset-1", "asset-2"])]
+    assert "retagged 2 video(s) as 'Nakavid/imported' in Immich" in output
+
+
+@pytest.mark.django_db
+def test_skipped_videos_are_not_retagged(storage_root, superuser):
+    """Already-imported assets were retagged on a previous run; leave them."""
+    _run()
+    _, _, retags = _run()
+
+    assert retags == {"tagged": [], "untagged": []}
+
+
+@pytest.mark.django_db
+def test_a_failed_retag_is_a_warning_not_a_failure(storage_root, superuser):
+    """The videos are already safely in NakaVid; a retag hiccup must not undo that."""
+    out = StringIO()
+    err = StringIO()
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}),
+        patch.object(ImmichClient, "tagged_assets", return_value=ASSETS),
+        patch.object(ImmichClient, "download_asset", _fake_download),
+        patch.object(ImmichClient, "upsert_tag", side_effect=ImmichError("Immich is down")),
+    ):
+        call_command("ingest_immich", class_name="Quokka", theme="Lesson", stdout=out, stderr=err)
+
+    assert Video.objects.count() == 2
+    assert "warning: imported 2 video(s) but could not retag them" in err.getvalue()
+
+
+@pytest.mark.django_db
+def test_the_imported_tag_name_can_be_overridden(storage_root, superuser):
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}),
+        patch.object(ImmichClient, "tagged_assets", return_value=ASSETS),
+        patch.object(ImmichClient, "download_asset", _fake_download),
+        patch.object(ImmichClient, "upsert_tag", return_value={"id": "custom-1"}) as upsert_tag,
+    ):
+        call_command(
+            "ingest_immich",
+            imported_tag="Nakavid/done",
+            class_name="Quokka",
+            theme="Lesson",
+            stdout=StringIO(),
+        )
+
+    upsert_tag.assert_called_once_with("Nakavid/done")
+
+
+@pytest.mark.django_db
+def test_defaults_to_the_nakavid_add_tag(storage_root, superuser):
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}) as tag_named,
+        patch.object(ImmichClient, "tagged_assets", return_value=[]),
+    ):
+        call_command("ingest_immich", class_name="Quokka", theme="Lesson", stdout=StringIO())
+
+    tag_named.assert_called_once_with("Nakavid/add")
+
+
+@pytest.mark.django_db
+def test_a_different_tag_can_be_selected(storage_root, superuser):
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-2"}) as tag_named,
+        patch.object(ImmichClient, "tagged_assets", return_value=[]) as tagged_assets,
+    ):
+        call_command(
+            "ingest_immich",
+            tag="Nakavid/review",
+            class_name="Quokka",
+            theme="Lesson",
+            stdout=StringIO(),
+        )
+
+    tag_named.assert_called_once_with("Nakavid/review")
+    tagged_assets.assert_called_once_with("tag-2")
 
 
 @pytest.mark.django_db
@@ -108,9 +204,9 @@ def test_each_video_is_queued_for_probing(storage_root, superuser):
 
 @pytest.mark.django_db
 def test_is_idempotent_by_immich_asset_id(storage_root, superuser):
-    """Filenames repeat across albums; the asset id is the stable identity."""
+    """Filenames repeat across tags; the asset id is the stable identity."""
     _run()
-    output, downloads = _run()
+    output, downloads, _ = _run()
 
     assert Video.objects.count() == 2
     assert downloads == []
@@ -119,11 +215,13 @@ def test_is_idempotent_by_immich_asset_id(storage_root, superuser):
 
 @pytest.mark.django_db
 def test_dry_run_downloads_nothing(storage_root, superuser):
-    output, downloads = _run(dry_run=True)
+    output, downloads, retags = _run(dry_run=True)
 
     assert Video.objects.count() == 0
     assert downloads == []
     assert "would pull 2 video(s)" in output
+    # A dry run writes nothing, in Immich either.
+    assert retags == {"tagged": [], "untagged": []}
 
 
 @pytest.mark.django_db
@@ -148,13 +246,12 @@ def test_a_failed_download_does_not_create_a_row(storage_root, superuser):
         raise ImmichError("connection reset")
 
     with (
-        patch.object(ImmichClient, "album_named", return_value={"id": "album-1"}),
-        patch.object(ImmichClient, "album_assets", return_value=ASSETS[:1]),
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}),
+        patch.object(ImmichClient, "tagged_assets", return_value=ASSETS[:1]),
         patch.object(ImmichClient, "download_asset", explode),
     ):
         call_command(
             "ingest_immich",
-            album="nakavid",
             class_name="A",
             theme="B",
             stdout=StringIO(),
@@ -165,10 +262,10 @@ def test_a_failed_download_does_not_create_a_row(storage_root, superuser):
 
 
 @pytest.mark.django_db
-def test_a_missing_album_is_reported_clearly(storage_root, superuser):
-    with patch.object(ImmichClient, "albums", return_value=[{"id": "x", "albumName": "Holidays"}]):
-        with pytest.raises(CommandError, match="No Immich album named 'nakavid'"):
-            call_command("ingest_immich", album="nakavid", class_name="A", theme="B")
+def test_a_missing_tag_is_reported_clearly(storage_root, superuser):
+    with patch.object(ImmichClient, "tags", return_value=[{"id": "x", "value": "Holidays"}]):
+        with pytest.raises(CommandError, match="No Immich tag named 'Nakavid/add'"):
+            call_command("ingest_immich", class_name="A", theme="B")
 
 
 def test_a_public_immich_host_is_refused(settings):
@@ -209,32 +306,86 @@ def _client_with_responses(responses: dict[str, object]) -> ImmichClient:
     return client
 
 
-def test_albums_include_ones_shared_from_another_account():
-    """Footage filmed on one login is often collected under another."""
+def test_tag_named_matches_on_the_full_hierarchical_path():
+    """Immich reports a nested tag's full path in 'value', not just the leaf."""
+    client = _client_with_responses(
+        {"/api/tags": [{"id": "t1", "value": "Nakavid/add"}, {"id": "t2", "value": "Holidays"}]}
+    )
+
+    assert client.tag_named("Nakavid/add")["id"] == "t1"
+
+
+def test_a_tag_listed_twice_is_reported_as_ambiguous():
     client = _client_with_responses(
         {
-            "/api/albums": [{"id": "own-1", "albumName": "My Stuff"}],
-            "/api/albums?shared=true": [{"id": "shared-1", "albumName": "nakavid"}],
+            "/api/tags": [
+                {"id": "t1", "value": "Nakavid/add"},
+                {"id": "t2", "value": "nakavid/add"},
+            ]
         }
     )
 
-    names = {album["albumName"] for album in client.albums()}
-
-    assert names == {"My Stuff", "nakavid"}
-    assert client.album_named("nakavid")["id"] == "shared-1"
+    with pytest.raises(ImmichError, match="More than one Immich tag"):
+        client.tag_named("Nakavid/add")
 
 
-def test_an_album_listed_twice_is_not_duplicated():
-    """A shared album you also own must not look like two albums."""
-    album = {"id": "both-1", "albumName": "nakavid"}
-    client = _client_with_responses({"/api/albums": [album], "/api/albums?shared=true": [album]})
+def _client_with_send(responses: dict[tuple[str, str], object]) -> tuple[ImmichClient, list]:
+    client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
+    calls: list[tuple[str, str, dict]] = []
 
-    assert len(client.albums()) == 1
-    assert client.album_named("nakavid")["id"] == "both-1"
+    def fake_send(method, path, body):
+        calls.append((method, path, body))
+        return responses[(method, path)]
+
+    client._send_json = fake_send  # type: ignore[method-assign]
+    return client, calls
 
 
-def test_album_assets_pages_through_search_results():
-    """Search is paginated; a large album must not stop at the first page."""
+def test_upsert_tag_returns_the_matching_tag():
+    client, calls = _client_with_send(
+        {("PUT", "/api/tags"): [{"id": "t1", "value": "Nakavid/imported"}]}
+    )
+
+    tag = client.upsert_tag("Nakavid/imported")
+
+    assert tag["id"] == "t1"
+    assert calls == [("PUT", "/api/tags", {"tags": ["Nakavid/imported"]})]
+
+
+def test_upsert_tag_reports_a_response_missing_the_tag():
+    client, _ = _client_with_send({("PUT", "/api/tags"): [{"id": "t1", "value": "Other"}]})
+
+    with pytest.raises(ImmichError, match="did not return the upserted tag"):
+        client.upsert_tag("Nakavid/imported")
+
+
+def test_tag_assets_sends_the_asset_ids():
+    client, calls = _client_with_send({("PUT", "/api/tags/t1/assets"): None})
+
+    client.tag_assets("t1", ["a1", "a2"])
+
+    assert calls == [("PUT", "/api/tags/t1/assets", {"ids": ["a1", "a2"]})]
+
+
+def test_untag_assets_sends_the_asset_ids():
+    client, calls = _client_with_send({("DELETE", "/api/tags/t1/assets"): None})
+
+    client.untag_assets("t1", ["a1", "a2"])
+
+    assert calls == [("DELETE", "/api/tags/t1/assets", {"ids": ["a1", "a2"]})]
+
+
+def test_tag_assets_and_untag_assets_skip_the_call_when_theres_nothing_to_send():
+    client, calls = _client_with_send({})
+
+    client.tag_assets("t1", [])
+    client.untag_assets("t1", [])
+
+    assert calls == []
+
+
+def test_tagged_assets_pages_through_search_results():
+    """Search is paginated; a large tag must not stop at the first page."""
     client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
     seen: list[dict] = []
 
@@ -269,18 +420,18 @@ def test_album_assets_pages_through_search_results():
         }
 
     client._post_json = fake_post  # type: ignore[method-assign]
-    assets = client.album_assets("album-1")
+    assets = client.tagged_assets("tag-1")
 
     assert [asset.id for asset in assets] == ["a1", "a2"]
     assert [body["page"] for body in seen] == [1, 2]
     # Videos are filtered server-side rather than fetching every photo.
     assert all(body["type"] == "VIDEO" for body in seen)
-    assert all(body["albumIds"] == ["album-1"] for body in seen)
+    assert all(body["tagIds"] == ["tag-1"] for body in seen)
 
 
-def test_album_assets_reports_an_unexpected_payload():
+def test_tagged_assets_reports_an_unexpected_payload():
     client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
     client._post_json = lambda path, body: {"unexpected": True}  # type: ignore[method-assign]
 
     with pytest.raises(ImmichError, match="no assets block"):
-        client.album_assets("album-1")
+        client.tagged_assets("tag-1")
