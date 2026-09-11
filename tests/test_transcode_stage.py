@@ -59,8 +59,6 @@ def user(db):
 def _create_type_a_video(*, storage_root: Path, user, filename: str = "sample.mov") -> Video:
     relative_path = build_originals_relative_path(
         recorded_at=timezone.now().date(),
-        class_name="A",
-        theme="Transcode",
         filename=filename,
     )
     absolute_path = to_absolute_storage_path(storage_root, relative_path)

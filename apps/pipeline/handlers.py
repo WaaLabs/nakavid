@@ -237,8 +237,6 @@ def handle_clip_extraction(job: Job) -> None:
         for clip_index, selection in enumerate(selections, start=1):
             relative_video_path, relative_thumbnail_path = build_highlight_relative_paths(
                 recorded_at=video.recorded_at,
-                class_name=video.class_name,
-                theme=video.theme,
                 source_stem=source_stem,
                 clip_index=clip_index,
             )

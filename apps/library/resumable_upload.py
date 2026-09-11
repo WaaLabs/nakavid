@@ -45,8 +45,6 @@ class UploadMetadata:
     def relative_path(self) -> str:
         return build_originals_relative_path(
             recorded_at=self.recorded_on,
-            class_name=self.class_name,
-            theme=self.theme,
             filename=self.safe_filename,
         )
 

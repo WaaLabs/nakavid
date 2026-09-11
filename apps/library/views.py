@@ -207,8 +207,6 @@ def type_b_ingest(request):
         if form.is_valid():
             relative_path = build_originals_relative_path(
                 recorded_at=form.cleaned_data["recorded_at"],
-                class_name=form.cleaned_data["class_name"],
-                theme=form.cleaned_data["theme"],
                 filename=form.cleaned_filename(),
             )
             storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
