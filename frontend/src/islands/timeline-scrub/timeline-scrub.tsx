@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { ClipLink } from "./clip-link";
 import { ClipSegment, scoreToTone } from "./clip-segment";
 import type { TimelineClip, TimelineProps } from "./types";
 import { cn } from "@/utils/cn";
@@ -123,7 +124,6 @@ export function TimelineScrub({
           return (
             <ClipSegment
               key={clip.id}
-              href={`#clip-${clip.id}`}
               label={`${clip.label} · score ${clip.highlightScore}`}
               leftPercent={leftPercent}
               widthPercent={widthPercent}
@@ -143,7 +143,19 @@ export function TimelineScrub({
       </div>
       {orderedClips.length === 0 ? (
         <p className="timeline-scrub__empty">No extracted clips for this video yet.</p>
-      ) : null}
+      ) : (
+        <div className="timeline-scrub__links" aria-label="Jump to a clip">
+          {orderedClips.map((clip, index) => (
+            <ClipLink
+              key={clip.id}
+              href={`#clip-${clip.id}`}
+              label={`${clip.label} · score ${clip.highlightScore}`}
+              number={index + 1}
+              tone={scoreToTone(clip.highlightScore)}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

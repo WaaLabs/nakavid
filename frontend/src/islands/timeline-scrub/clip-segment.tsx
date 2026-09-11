@@ -41,7 +41,6 @@ export function scoreToTone(score: number): ClipSegmentTone {
 }
 
 type ClipSegmentProps = {
-  href: string;
   label: string;
   leftPercent: number;
   widthPercent: number;
@@ -50,8 +49,13 @@ type ClipSegmentProps = {
   onSelect: () => void;
 };
 
+/**
+ * A clip's span on the scrub bar. Selects and seeks only — it used to also
+ * be a same-page `<a href="#clip-N">`, which meant clicking a bar to scrub
+ * the player also yanked the viewport down to that clip's card. The jump
+ * link now lives in ClipLink, rendered in a separate strip below the track.
+ */
 export function ClipSegment({
-  href,
   label,
   leftPercent,
   widthPercent,
@@ -60,8 +64,8 @@ export function ClipSegment({
   onSelect,
 }: ClipSegmentProps) {
   return (
-    <a
-      href={href}
+    <button
+      type="button"
       className={cn(clipSegmentVariants({ tone, active }))}
       style={{
         left: `${leftPercent}%`,

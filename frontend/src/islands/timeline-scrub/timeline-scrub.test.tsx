@@ -22,11 +22,20 @@ const CLIPS: TimelineClip[] = [QUIET_CLIP, MIDDLING_CLIP, BEST_CLIP];
 
 /** Indexing into the rendered bars, with the optionality checked once. */
 function barAt(index: number): HTMLElement {
-  const bar = screen.getAllByRole("link")[index];
+  const bar = screen.getAllByRole("button")[index];
   if (bar === undefined) {
     throw new Error(`no timeline bar at ${index}`);
   }
   return bar;
+}
+
+/** Indexing into the jump-link strip below the track. */
+function linkAt(index: number): HTMLElement {
+  const link = screen.getAllByRole("link")[index];
+  if (link === undefined) {
+    throw new Error(`no jump link at ${index}`);
+  }
+  return link;
 }
 
 function trackOf(container: HTMLElement): HTMLElement {
@@ -48,7 +57,7 @@ describe("TimelineScrub", () => {
     // The reported bug: every bar sat at the left of the track regardless of
     // when its clip occurred.
     renderTimeline();
-    expect(screen.getAllByRole("link")).toHaveLength(3);
+    expect(screen.getAllByRole("button")).toHaveLength(3);
     expect(barAt(0).style.left).toBe("0%");
     expect(barAt(1).style.left).toBe("25%");
     expect(barAt(2).style.left).toBe("75%");
@@ -68,22 +77,36 @@ describe("TimelineScrub", () => {
     expect(Number.parseFloat(barAt(0).style.width)).toBeGreaterThanOrEqual(0.6);
   });
 
-  it("links each bar to its clip", () => {
+  it("does not link the bar itself — that used to also jump the page", () => {
+    // A bar can be a few seconds wide on a 90-minute recording: too thin a
+    // target to carry same-page navigation as well as seeking the player.
     renderTimeline();
-    const bars = screen.getAllByRole("link");
 
-    expect(bars.map((bar) => bar.getAttribute("href"))).toEqual([
-      "#clip-7",
-      "#clip-8",
-      "#clip-9",
-    ]);
+    expect(barAt(0).tagName).toBe("BUTTON");
+    expect(barAt(0).hasAttribute("href")).toBe(false);
+  });
+
+  it("puts a jump link to each clip's card in the strip below", () => {
+    renderTimeline();
+
+    expect(
+      screen.getAllByRole("link").map((link) => link.getAttribute("href")),
+    ).toEqual(["#clip-7", "#clip-8", "#clip-9"]);
+  });
+
+  it("numbers the jump links by chronological order, not clip id", () => {
+    renderTimeline();
+
+    expect(linkAt(0).textContent).toContain("Clip 1");
+    expect(linkAt(1).textContent).toContain("Clip 2");
+    expect(linkAt(2).textContent).toContain("Clip 3");
   });
 
   it("orders bars by time even when the clips arrive unsorted", () => {
     renderTimeline([BEST_CLIP, QUIET_CLIP, MIDDLING_CLIP]);
 
     expect(
-      screen.getAllByRole("link").map((bar) => bar.getAttribute("href")),
+      screen.getAllByRole("link").map((link) => link.getAttribute("href")),
     ).toEqual(["#clip-7", "#clip-8", "#clip-9"]);
   });
 
