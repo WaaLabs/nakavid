@@ -9,8 +9,7 @@ ORIGINALS_PREFIX = "originals"
 HIGHLIGHTS_PREFIX = "highlights"
 COMBINES_PREFIX = "combines"
 _PATH_SEGMENT_RE = re.compile(
-    r"^originals/(?P<year>\d{4})/(?P<month>\d{2})/"
-    r"(?P<date>\d{8})_(?P<class_name>[^/]+)_(?P<theme>[^/]+)/(?P<filename>[^/]+)$"
+    r"^originals/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/(?P<filename>[^/]+)$"
 )
 
 
@@ -21,20 +20,22 @@ def slug_segment(value: str) -> str:
 def build_originals_relative_path(
     *,
     recorded_at: date | datetime,
-    class_name: str,
-    theme: str,
     filename: str,
 ) -> str:
+    """originals/{year}/{month}/{day}/{filename}.
+
+    Class and theme are not encoded here — they're Video fields, nothing
+    more. A folder keyed only on the recording date means two videos from
+    the same day never collide on class or theme spelling, and renaming a
+    class or theme later is a DB write, not a filesystem operation.
+    """
     if isinstance(recorded_at, datetime):
         recorded_at = recorded_at.date()
-    date_token = recorded_at.strftime("%Y%m%d")
-    class_slug = slug_segment(class_name)
-    theme_slug = slug_segment(theme)
     return str(
         PurePosixPath(ORIGINALS_PREFIX)
         / str(recorded_at.year)
         / f"{recorded_at.month:02d}"
-        / f"{date_token}_{class_slug}_{theme_slug}"
+        / f"{recorded_at.day:02d}"
         / filename
     )
 
@@ -42,22 +43,19 @@ def build_originals_relative_path(
 def build_highlight_relative_paths(
     *,
     recorded_at: date | datetime,
-    class_name: str,
-    theme: str,
     source_stem: str,
     clip_index: int,
 ) -> tuple[str, str]:
+    """highlights/{year}/{month}/{day}/{stem}__clip_{NNN}.{mp4,jpg} — see
+    build_originals_relative_path for why class/theme aren't in the path."""
     if isinstance(recorded_at, datetime):
         recorded_at = recorded_at.date()
-    date_token = recorded_at.strftime("%Y%m%d")
-    class_slug = slug_segment(class_name)
-    theme_slug = slug_segment(theme)
     clip_name = f"{source_stem}__clip_{clip_index:03d}"
     base = (
         PurePosixPath(HIGHLIGHTS_PREFIX)
         / str(recorded_at.year)
         / f"{recorded_at.month:02d}"
-        / f"{date_token}_{class_slug}_{theme_slug}"
+        / f"{recorded_at.day:02d}"
     )
     return str(base / f"{clip_name}.mp4"), str(base / f"{clip_name}.jpg")
 
@@ -105,8 +103,6 @@ def to_accel_redirect_path(absolute_storage_path: str) -> str:
 @dataclass(frozen=True)
 class OriginalsPathMetadata:
     recorded_on: date
-    class_name: str
-    theme: str
     filename: str
 
 
@@ -115,10 +111,5 @@ def parse_originals_relative_path(relative_path: str) -> OriginalsPathMetadata:
     if match is None:
         raise ValueError(f"Unrecognized originals path: {relative_path}")
     groups = match.groupdict()
-    recorded_on = datetime.strptime(groups["date"], "%Y%m%d").date()
-    return OriginalsPathMetadata(
-        recorded_on=recorded_on,
-        class_name=groups["class_name"],
-        theme=groups["theme"],
-        filename=groups["filename"],
-    )
+    recorded_on = date(int(groups["year"]), int(groups["month"]), int(groups["day"]))
+    return OriginalsPathMetadata(recorded_on=recorded_on, filename=groups["filename"])

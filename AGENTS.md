@@ -53,15 +53,19 @@ Do not touch `backups/`.
 - **React islands do the interactive half, and only that.** The lesson-view timeline/scrub and the drag-combine builder mount as islands on their Django pages (root div + data props → Vite bundle). Keep the JS surface minimal.
 - **The worker owns the pipeline; Django owns the CMS.** They meet only at the DB job queue and the storage path convention. Django never runs long ffmpeg jobs in a request — it **enqueues** a job row; the worker (a management command) claims it with `SELECT … FOR UPDATE SKIP LOCKED`, runs it, writes status back. (Django-Q/Celery is the scale-up path; the Postgres-queue + management-command worker is the v1 default — lowest infra on one box.)
 - **Streaming is a proxy handoff.** The video route checks auth in Django, then returns an internal-redirect header pointing Caddy at the on-disk file; Caddy serves it with HTTP range support. No large-file bytes flow through Django.
-- **Storage path convention** (filename encodes its parent, so the DB link is recoverable from disk alone):
+- **Storage path convention** (the recording date is recoverable from disk alone; class and theme are not — they're DB metadata only, never baked into a path):
   ```
-  /nakavid/originals/{year}/{month}/{date}_{class}_{theme}/{filename}
-  /nakavid/highlights/{year}/{month}/{date}_{class}_{theme}/{stem}__clip_{NNN}.mp4 (+ .jpg)
+  /nakavid/originals/{year}/{month}/{day}/{filename}
+  /nakavid/highlights/{year}/{month}/{day}/{stem}__clip_{NNN}.mp4 (+ .jpg)
   /nakavid/combines/{title}_{date}.mp4
   ```
   Two derived files sit beside their source, marked by suffix so they are
   recoverable from disk alone: `{stem}__web.mp4` (browser-safe H.264 rendition)
   and `{stem}__sheet.jpg` (contact-sheet sprite used by scoring tuning).
+  Folders are keyed on date only, so class/theme spelling or a later rename
+  never touches the filesystem — but it also means the DB is the only copy of
+  which class or theme a video belongs to; there is no disk-alone recovery
+  for that half.
 
 ## Code conventions
 

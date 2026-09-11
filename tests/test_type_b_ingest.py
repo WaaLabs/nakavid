@@ -35,18 +35,14 @@ def authenticated_client(client):
 def test_build_and_parse_originals_path_round_trip():
     relative_path = build_originals_relative_path(
         recorded_at=date(2026, 7, 7),
-        class_name="A",
-        theme="Animals",
         filename="crowd_reaction.mp4",
     )
 
-    assert relative_path == "originals/2026/07/20260707_a_animals/crowd_reaction.mp4"
+    assert relative_path == "originals/2026/07/07/crowd_reaction.mp4"
 
     metadata = parse_originals_relative_path(relative_path)
 
     assert metadata.recorded_on == date(2026, 7, 7)
-    assert metadata.class_name == "a"
-    assert metadata.theme == "animals"
     assert metadata.filename == "crowd_reaction.mp4"
 
 
@@ -82,8 +78,6 @@ def test_type_b_ingest_upload_happy_path(authenticated_client, storage_root):
 
     relative_path = build_originals_relative_path(
         recorded_at=date(2026, 7, 7),
-        class_name="A",
-        theme="Animals",
         filename="crowd_reaction.mp4",
     )
     absolute_path = to_absolute_storage_path(storage_root, relative_path)

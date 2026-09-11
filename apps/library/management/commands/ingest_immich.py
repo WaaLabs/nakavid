@@ -123,8 +123,6 @@ class Command(BaseCommand):
             recorded_at = _recorded_at(asset.created_at)
             relative_path = build_originals_relative_path(
                 recorded_at=recorded_at,
-                class_name=options["class_name"],
-                theme=options["theme"],
                 filename=get_valid_filename(asset.original_file_name),
             )
             storage_path = to_absolute_storage_path(storage_root, relative_path)

@@ -31,8 +31,6 @@ def user(db):
 def _create_type_a_video(*, storage_root: Path, user) -> Video:
     relative_path = build_originals_relative_path(
         recorded_at=timezone.now().date(),
-        class_name="Kids A",
-        theme="Summer Camp",
         filename="lesson.mp4",
     )
     absolute_path = to_absolute_storage_path(storage_root, relative_path)
@@ -154,8 +152,6 @@ def test_extraction_cuts_from_the_transcoded_playback_file(storage_root, user):
     video = _create_type_a_video(storage_root=storage_root, user=user)
     playback_relative = build_originals_relative_path(
         recorded_at=timezone.now().date(),
-        class_name="Kids A",
-        theme="Summer Camp",
         filename="lesson__web.mp4",
     )
     video.playback_path = to_absolute_storage_path(storage_root, playback_relative)

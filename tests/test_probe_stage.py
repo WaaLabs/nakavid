@@ -144,8 +144,6 @@ def _create_video_on_disk(
     if relative_path is None:
         relative_path = build_originals_relative_path(
             recorded_at=timezone.now().date(),
-            class_name="A",
-            theme="Probe",
             filename="sample.mp4",
         )
     absolute_path = to_absolute_storage_path(storage_root, relative_path)

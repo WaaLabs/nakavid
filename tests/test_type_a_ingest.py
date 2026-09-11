@@ -102,8 +102,6 @@ def test_chunk_assembly_and_finalize(storage_root):
         storage_root,
         build_originals_relative_path(
             recorded_at=date(2026, 7, 7),
-            class_name="A",
-            theme="Animals",
             filename="lesson_recording.mp4",
         ),
     )
@@ -203,8 +201,6 @@ def test_type_a_upload_api_happy_path(authenticated_client, storage_root):
 
     relative_path = build_originals_relative_path(
         recorded_at=date(2026, 7, 7),
-        class_name="A",
-        theme="Animals",
         filename="lesson_recording.mp4",
     )
     saved_file = storage_root / relative_path
@@ -275,8 +271,6 @@ def test_type_a_upload_resume_after_interrupt(authenticated_client, storage_root
 
     relative_path = build_originals_relative_path(
         recorded_at=date(2026, 7, 8),
-        class_name="B",
-        theme="Sports",
         filename="match_day.mp4",
     )
     assert (storage_root / relative_path).read_bytes() == payload

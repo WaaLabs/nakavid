@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
-from apps.library.models import Video
-from apps.library.storage_paths import HIGHLIGHTS_PREFIX, slug_segment
 from apps.pipeline.models import ScoringParams
 
 
@@ -198,25 +196,6 @@ def select_clip_segments(
         )
 
     return sorted(selections, key=lambda selection: selection.start_seconds)
-
-
-def build_highlight_relative_paths(
-    *, video: Video, source_stem: str, clip_index: int
-) -> tuple[str, str]:
-    recorded_on = video.recorded_at.date()
-    clip_stem = f"{source_stem}__clip_{clip_index:03d}"
-    folder = (
-        PurePosixPath(HIGHLIGHTS_PREFIX)
-        / str(recorded_on.year)
-        / f"{recorded_on.month:02d}"
-        / (
-            f"{recorded_on.strftime('%Y%m%d')}_{slug_segment(video.class_name)}"
-            f"_{slug_segment(video.theme)}"
-        )
-    )
-    video_relative_path = str(folder / f"{clip_stem}.mp4")
-    thumbnail_relative_path = str(folder / f"{clip_stem}.jpg")
-    return video_relative_path, thumbnail_relative_path
 
 
 def run_ffmpeg_trim(

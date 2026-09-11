@@ -190,8 +190,8 @@ def test_files_land_under_their_own_recording_dates(storage_root, superuser):
     _run()
 
     paths = sorted(video.source_path for video in Video.objects.all())
-    assert "originals/2026/05/20260504_quokka_lesson/lesson_one.mp4" in paths[0]
-    assert "originals/2026/06/20260617_quokka_lesson/lesson_two.mov" in paths[1]
+    assert "originals/2026/05/04/lesson_one.mp4" in paths[0]
+    assert "originals/2026/06/17/lesson_two.mov" in paths[1]
 
 
 @pytest.mark.django_db
