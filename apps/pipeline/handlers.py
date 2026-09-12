@@ -320,6 +320,28 @@ def _score_short_recording(*, video: Video, params) -> None:
             )
 
 
+def ensure_video_thumbnail(video: Video) -> str:
+    """The video's poster frame, generating one first if it has none yet.
+
+    The recordings browse page shows one card per video, not per clip, so
+    it needs its own poster rather than borrowing a clip's. A few seconds in
+    rather than frame zero, which is often still black. Public — also used
+    to backfill videos scored before this existed.
+    """
+    if video.thumbnail_path:
+        return video.thumbnail_path
+    relative_thumbnail = build_video_thumbnail_relative_path(
+        _storage_path_to_relative(video.source_path)
+    )
+    storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+    run_ffmpeg_thumbnail(
+        source_path=_playback_file_path(video),
+        target_path=storage_root / relative_thumbnail,
+        at_seconds=min(3.0, video.duration_seconds / 2.0),
+    )
+    return to_absolute_storage_path(storage_root, relative_thumbnail)
+
+
 def handle_score(job: Job) -> None:
     video = job.video
     params = scoring_params_from_job(job)
@@ -332,22 +354,7 @@ def handle_score(job: Job) -> None:
         params=params,
         duration_seconds=video.duration_seconds,
     )
-
-    thumbnail_path = video.thumbnail_path
-    if not thumbnail_path:
-        # The recordings browse page shows one card per video, not per clip,
-        # so it needs its own poster frame rather than borrowing a clip's.
-        # A few seconds in rather than frame zero, which is often still black.
-        relative_thumbnail = build_video_thumbnail_relative_path(
-            _storage_path_to_relative(video.source_path)
-        )
-        storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
-        run_ffmpeg_thumbnail(
-            source_path=_playback_file_path(video),
-            target_path=storage_root / relative_thumbnail,
-            at_seconds=min(3.0, video.duration_seconds / 2.0),
-        )
-        thumbnail_path = to_absolute_storage_path(storage_root, relative_thumbnail)
+    thumbnail_path = ensure_video_thumbnail(video)
 
     with transaction.atomic():
         # The curve lives on the video, not on a placeholder clip row. That row
