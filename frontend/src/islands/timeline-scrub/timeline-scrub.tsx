@@ -28,6 +28,17 @@ function seekPlayer(player: HTMLVideoElement | null, seconds: number): void {
   player.currentTime = clamp(seconds, 0, Math.max(duration, 0));
 }
 
+/** A clip's span as percentages of the track, shared by the bar and its
+ * jump link below so the two rows line up as one timeline. */
+function clipSpanPercent(
+  clip: TimelineClip,
+  safeDuration: number,
+): { leftPercent: number; widthPercent: number; centerPercent: number } {
+  const leftPercent = (clip.startSeconds / safeDuration) * 100;
+  const widthPercent = ((clip.endSeconds - clip.startSeconds) / safeDuration) * 100;
+  return { leftPercent, widthPercent, centerPercent: leftPercent + widthPercent / 2 };
+}
+
 export function TimelineScrub({
   durationSeconds,
   clips,
@@ -118,9 +129,7 @@ export function TimelineScrub({
         }}
       >
         {orderedClips.map((clip) => {
-          const leftPercent = (clip.startSeconds / safeDuration) * 100;
-          const widthPercent =
-            ((clip.endSeconds - clip.startSeconds) / safeDuration) * 100;
+          const { leftPercent, widthPercent } = clipSpanPercent(clip, safeDuration);
           return (
             <ClipSegment
               key={clip.id}
@@ -151,6 +160,7 @@ export function TimelineScrub({
               href={`#clip-${clip.id}`}
               label={`${clip.label} · score ${clip.highlightScore}`}
               number={index + 1}
+              centerPercent={clipSpanPercent(clip, safeDuration).centerPercent}
               tone={scoreToTone(clip.highlightScore)}
             />
           ))}

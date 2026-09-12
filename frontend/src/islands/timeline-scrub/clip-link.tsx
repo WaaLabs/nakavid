@@ -20,6 +20,7 @@ type ClipLinkProps = {
   href: string;
   label: string;
   number: number;
+  centerPercent: number;
   tone: ClipSegmentTone;
 };
 
@@ -28,11 +29,20 @@ type ClipLinkProps = {
  * same element as its bar on the scrub track above: a clip's span can be a
  * few seconds on a 90-minute recording, far too thin a target to also carry
  * same-page navigation. See ClipSegment for the bug this split fixes.
+ *
+ * Centered under that bar's midpoint (not stretched to its width, which
+ * would be unreadable for a short clip) so the two rows still read as one
+ * timeline rather than two unrelated lists.
  */
-export function ClipLink({ href, label, number, tone }: ClipLinkProps) {
+export function ClipLink({ href, label, number, centerPercent, tone }: ClipLinkProps) {
   return (
-    <a href={href} className={cn(clipLinkVariants({ tone }))} title={label}>
-      Clip {number}
+    <a
+      href={href}
+      className={cn(clipLinkVariants({ tone }))}
+      style={{ left: `${centerPercent}%` }}
+      title={label}
+    >
+      {number}
     </a>
   );
 }
