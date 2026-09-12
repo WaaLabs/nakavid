@@ -97,9 +97,17 @@ describe("TimelineScrub", () => {
   it("numbers the jump links by chronological order, not clip id", () => {
     renderTimeline();
 
-    expect(linkAt(0).textContent).toContain("Clip 1");
-    expect(linkAt(1).textContent).toContain("Clip 2");
-    expect(linkAt(2).textContent).toContain("Clip 3");
+    expect(linkAt(0).textContent).toBe("1");
+    expect(linkAt(1).textContent).toBe("2");
+    expect(linkAt(2).textContent).toBe("3");
+  });
+
+  it("centers a jump link under its own bar's midpoint", () => {
+    renderTimeline();
+
+    // MIDDLING_CLIP spans 300s–330s of a 1200s timeline: left 25%, width
+    // 2.5%, so its bar's midpoint — and this link's center — is 26.25%.
+    expect(linkAt(1).style.left).toBe("26.25%");
   });
 
   it("orders bars by time even when the clips arrive unsorted", () => {

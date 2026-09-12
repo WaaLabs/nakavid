@@ -98,19 +98,25 @@
  * Split out from the bars above: a bar can be a few seconds wide on a
  * 90-minute recording, far too thin a target to also carry same-page
  * navigation — clicking one to scrub the player also yanked the viewport
- * down to a card. These are full-size, ordinary tap targets instead. */
+ * down to a card. Each link sits centered under its own bar's midpoint
+ * (same leftPercent/widthPercent math) so the two rows still read as one
+ * timeline instead of an unrelated list underneath it. */
 .timeline-scrub__links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  position: relative;
+  height: 1.75rem;
 }
 
 .timeline-scrub__link {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  min-width: 1.5rem;
   border-radius: var(--nv-radius-sm);
   border: 1px solid transparent;
-  padding: 0.25rem 0.6rem;
-  font-size: 0.8125rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
   font-weight: 600;
+  text-align: center;
   color: var(--nv-bg);
   text-decoration: none;
   transition: filter 120ms ease;
