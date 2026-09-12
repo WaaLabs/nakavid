@@ -12,7 +12,7 @@ from apps.library.storage_paths import (
     build_contact_sheet_relative_path,
     build_highlight_relative_paths,
     build_playback_relative_path,
-    build_short_thumbnail_relative_path,
+    build_video_thumbnail_relative_path,
     to_absolute_storage_path,
 )
 from apps.pipeline.combine_export import CombineExportError, run_ffmpeg_concat
@@ -289,7 +289,7 @@ def _score_short_recording(*, video: Video, params) -> None:
     clip = video.clips.order_by("id").first()
     thumbnail_path = ""
     if clip is not None and not clip.thumbnail_path:
-        relative_thumbnail = build_short_thumbnail_relative_path(
+        relative_thumbnail = build_video_thumbnail_relative_path(
             _storage_path_to_relative(video.source_path)
         )
         storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
@@ -333,13 +333,32 @@ def handle_score(job: Job) -> None:
         duration_seconds=video.duration_seconds,
     )
 
+    thumbnail_path = video.thumbnail_path
+    if not thumbnail_path:
+        # The recordings browse page shows one card per video, not per clip,
+        # so it needs its own poster frame rather than borrowing a clip's.
+        # A few seconds in rather than frame zero, which is often still black.
+        relative_thumbnail = build_video_thumbnail_relative_path(
+            _storage_path_to_relative(video.source_path)
+        )
+        storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+        run_ffmpeg_thumbnail(
+            source_path=_playback_file_path(video),
+            target_path=storage_root / relative_thumbnail,
+            at_seconds=min(3.0, video.duration_seconds / 2.0),
+        )
+        thumbnail_path = to_absolute_storage_path(storage_root, relative_thumbnail)
+
     with transaction.atomic():
         # The curve lives on the video, not on a placeholder clip row. That row
         # was found by matching storage_path against the source, was deleted by
         # extraction, and was the thing a re-score corrupted.
         video.energy_curve = result.energy_curve
         video.highlight_score = result.highlight_score
-        video.save(update_fields=["energy_curve", "highlight_score", "updated_at"])
+        video.thumbnail_path = thumbnail_path
+        video.save(
+            update_fields=["energy_curve", "highlight_score", "thumbnail_path", "updated_at"]
+        )
         enqueue_clip_extraction_job(video=video, scoring_params_id=params.pk)
 
 

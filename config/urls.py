@@ -28,6 +28,7 @@ from apps.library.views import (
     type_b_ingest,
     video_contact_sheet,
     video_stream,
+    video_thumbnail,
 )
 
 
@@ -64,6 +65,7 @@ urlpatterns = [
     path("tuning/apply/", scoring_tuning_apply, name="scoring-tuning-apply"),
     path("source-videos/<int:video_id>/", lesson_view, name="lesson-view"),
     path("source-videos/<int:video_id>/stream/", video_stream, name="video-stream"),
+    path("source-videos/<int:video_id>/thumbnail/", video_thumbnail, name="video-thumbnail"),
     path(
         "source-videos/<int:video_id>/contact-sheet/",
         video_contact_sheet,

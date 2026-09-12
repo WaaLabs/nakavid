@@ -177,3 +177,67 @@ def test_video_stream_rejects_type_b(authenticated_client, sample_videos):
     response = client.get(reverse("video-stream", args=[type_b.id]))
 
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_video_thumbnail_requires_login(client, sample_videos):
+    type_a, _type_b = sample_videos
+
+    response = client.get(reverse("video-thumbnail", args=[type_a.id]))
+
+    assert response.status_code == 302
+    assert response["Location"].startswith("/accounts/login/")
+
+
+@pytest.mark.django_db
+def test_video_thumbnail_404s_before_the_score_stage_runs(authenticated_client, sample_videos):
+    """No poster yet means no card should silently render a broken image."""
+    client, _user = authenticated_client
+    type_a, _type_b = sample_videos
+
+    response = client.get(reverse("video-thumbnail", args=[type_a.id]))
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_video_thumbnail_returns_accel_redirect(authenticated_client, sample_videos):
+    client, _user = authenticated_client
+    type_a, _type_b = sample_videos
+    type_a.thumbnail_path = to_absolute_storage_path(
+        None, "originals/2026/07/20260701_a_animals/full_lesson__thumb.jpg"
+    )
+    type_a.save(update_fields=["thumbnail_path"])
+
+    response = client.get(reverse("video-thumbnail", args=[type_a.id]))
+
+    assert response.status_code == 200
+    assert response.content == b""
+    assert response["X-Accel-Redirect"] == (
+        "/originals/2026/07/20260701_a_animals/full_lesson__thumb.jpg"
+    )
+
+
+@pytest.mark.django_db
+def test_source_videos_card_gets_a_poster_once_thumbnailed(authenticated_client, sample_videos):
+    client, _user = authenticated_client
+    type_a, _type_b = sample_videos
+    type_a.thumbnail_path = to_absolute_storage_path(
+        None, "originals/2026/07/20260701_a_animals/full_lesson__thumb.jpg"
+    )
+    type_a.save(update_fields=["thumbnail_path"])
+
+    response = client.get(reverse("source-videos"))
+
+    assert reverse("video-thumbnail", args=[type_a.id]).encode() in response.content
+
+
+@pytest.mark.django_db
+def test_source_videos_card_has_no_poster_before_thumbnailed(authenticated_client, sample_videos):
+    """Before scoring runs there is nothing to point poster at."""
+    client, _user = authenticated_client
+    type_a, _type_b = sample_videos
+
+    response = client.get(reverse("source-videos"))
+
+    assert reverse("video-thumbnail", args=[type_a.id]).encode() not in response.content

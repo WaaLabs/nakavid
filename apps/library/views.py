@@ -651,6 +651,18 @@ def clip_thumbnail(request, clip_id: int):
 
 
 @login_required
+def video_thumbnail(request, video_id: int):
+    """Serve a recording's poster frame through the same proxy handoff."""
+    video = get_object_or_404(Video, pk=video_id)
+    if not video.thumbnail_path:
+        raise Http404("Video has no thumbnail")
+    response = HttpResponse()
+    response["X-Accel-Redirect"] = to_accel_redirect_path(video.thumbnail_path)
+    response["Content-Type"] = ""
+    return response
+
+
+@login_required
 def video_contact_sheet(request, video_id: int):
     """Serve a recording's contact-sheet sprite through the proxy handoff."""
     video = get_object_or_404(Video, pk=video_id)
