@@ -66,8 +66,12 @@ def build_contact_sheet_relative_path(source_relative_path: str) -> str:
     return str(source.with_name(f"{source.stem}__sheet.jpg"))
 
 
-def build_short_thumbnail_relative_path(source_relative_path: str) -> str:
-    """Poster frame for a short recording, beside the file it came from."""
+def build_video_thumbnail_relative_path(source_relative_path: str) -> str:
+    """A video's own poster frame, beside the file it came from.
+
+    Used both for a short recording (its single clip is the whole video) and
+    a long recording's browse-page card (one per video, not per clip).
+    """
     source = PurePosixPath(source_relative_path)
     return str(source.with_name(f"{source.stem}__thumb.jpg"))
 

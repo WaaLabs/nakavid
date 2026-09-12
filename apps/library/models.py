@@ -39,6 +39,10 @@ class Video(models.Model):
     # so selection can be re-run — and re-tuned — without re-scoring, which is
     # the expensive half. Clips carry their own slice of this.
     energy_curve = models.JSONField(default=list, blank=True)
+    # A single representative frame, set by the score stage. Browse pages show
+    # one card per video — a whole recording, not one of its clips — so this
+    # is separate from any Clip's own thumbnail_path. Empty until scored.
+    thumbnail_path = models.CharField(max_length=1024, blank=True, default="")
     # Sprite of evenly spaced frames, used to preview any timestamp without
     # running ffmpeg in a request. Empty until the contact-sheet job runs.
     contact_sheet_path = models.CharField(max_length=1024, blank=True, default="")

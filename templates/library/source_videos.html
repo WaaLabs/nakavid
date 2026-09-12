@@ -31,7 +31,12 @@
   {% for row in video_rows %}
   <article class="card">
     <div class="card__media"{% if row.video.width and row.video.height %} style="--card-aspect: {{ row.video.width }} / {{ row.video.height }}"{% endif %}>
-      <video controls preload="none" src="{% url 'video-stream' row.video.id %}"></video>
+      <video
+        controls
+        preload="none"
+        {% if row.video.thumbnail_path %}poster="{% url 'video-thumbnail' row.video.id %}"{% endif %}
+        src="{% url 'video-stream' row.video.id %}"
+      ></video>
     </div>
     <div class="card__body">
       <h2 class="card__title">

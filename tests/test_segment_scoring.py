@@ -191,7 +191,10 @@ def test_handle_score_persists_energy_curve(storage_root, user):
         highlight_score=80,
     )
 
-    with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
+    with (
+        patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail") as run_thumbnail,
+    ):
         handle_score(job)
 
     video.refresh_from_db()
@@ -202,6 +205,10 @@ def test_handle_score_persists_energy_curve(storage_root, user):
     extraction_job = Job.objects.filter(video=video, job_type=Job.JobType.CLIP_EXTRACTION).first()
     assert extraction_job is not None
     assert extraction_job.scoring_params_id == params.pk
+    # The recordings browse page shows one card per video, so scoring also
+    # gives it its own poster frame rather than borrowing a clip's.
+    run_thumbnail.assert_called_once()
+    assert video.thumbnail_path.endswith("lesson__thumb.jpg")
 
 
 @pytest.mark.django_db
@@ -226,7 +233,10 @@ def test_rescoring_replaces_the_curve_and_leaves_clips_alone(storage_root, user)
         highlight_score=55,
     )
 
-    with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
+    with (
+        patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
         handle_score(job)
 
     video.refresh_from_db()
@@ -237,6 +247,25 @@ def test_rescoring_replaces_the_curve_and_leaves_clips_alone(storage_root, user)
     assert highlight.highlight_score == 91
     assert float(highlight.end_seconds) == 18.0
     assert highlight.energy_curve == [{"start": 10.0, "end": 14.0, "score": 91.0}]
+
+
+@pytest.mark.django_db
+def test_rescoring_does_not_regenerate_an_existing_thumbnail(storage_root, user):
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    video.thumbnail_path = "/nakavid/originals/2026/07/07/lesson__thumb.jpg"
+    video.save(update_fields=["thumbnail_path"])
+    job = Job.objects.create(video=video, job_type=Job.JobType.SCORE, status=Job.Status.PROCESSING)
+    scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=10)
+
+    with (
+        patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail") as run_thumbnail,
+    ):
+        handle_score(job)
+
+    run_thumbnail.assert_not_called()
+    video.refresh_from_db()
+    assert video.thumbnail_path == "/nakavid/originals/2026/07/07/lesson__thumb.jpg"
 
 
 @pytest.mark.django_db
