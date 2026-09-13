@@ -79,6 +79,20 @@ def test_ingests_every_video_and_queues_a_probe(tmp_path, storage_root, superuse
 
 @ffmpeg_required
 @pytest.mark.django_db
+def test_class_name_and_theme_are_optional(tmp_path, storage_root, superuser):
+    """NakaVid isn't school-specific — class/theme are free-text, not required."""
+    incoming = tmp_path / "incoming"
+    _write_video(incoming / "one.mp4")
+
+    call_command("ingest_directory", incoming, stdout=StringIO())
+
+    video = Video.objects.get()
+    assert video.class_name == ""
+    assert video.theme == ""
+
+
+@ffmpeg_required
+@pytest.mark.django_db
 def test_is_idempotent(tmp_path, storage_root, superuser):
     """Re-running over the same folder must not duplicate the library."""
     incoming = tmp_path / "incoming"

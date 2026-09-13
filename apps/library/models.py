@@ -24,8 +24,11 @@ class Video(models.Model):
     playback_path = models.CharField(max_length=1024, blank=True, default="")
     video_type = models.CharField(max_length=16, choices=VideoType.choices)
     orientation = models.CharField(max_length=16, choices=Orientation.choices)
-    class_name = models.CharField(max_length=120)
-    theme = models.CharField(max_length=120)
+    # Free-text organizing metadata, not a required taxonomy — NakaVid isn't
+    # school-specific, and Tag is the general mechanism. Left over from the
+    # original class/lesson use case; still useful there, optional everywhere.
+    class_name = models.CharField(max_length=120, blank=True, default="")
+    theme = models.CharField(max_length=120, blank=True, default="")
     recorded_at = models.DateTimeField()
     duration_seconds = models.PositiveIntegerField()
     video_codec = models.CharField(max_length=64, blank=True)

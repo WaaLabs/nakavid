@@ -64,8 +64,8 @@ class Command(BaseCommand):
                 f"Default: {DEFAULT_IMPORTED_TAG!r}."
             ),
         )
-        parser.add_argument("--class-name", required=True)
-        parser.add_argument("--theme", required=True)
+        parser.add_argument("--class-name", default="", help="Optional. Free-text metadata.")
+        parser.add_argument("--theme", default="", help="Optional. Free-text metadata.")
         parser.add_argument("--type", choices=["long", "short"], default="long")
         parser.add_argument("--user", help="Username to attribute the ingest to.")
         parser.add_argument(

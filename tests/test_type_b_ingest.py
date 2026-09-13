@@ -109,6 +109,27 @@ def test_type_b_ingest_upload_happy_path(authenticated_client, storage_root):
 
 
 @pytest.mark.django_db
+def test_class_name_and_theme_are_optional(authenticated_client, storage_root):
+    """NakaVid isn't school-specific — class/theme are free-text, not required."""
+    client, _user = authenticated_client
+    upload = SimpleUploadedFile(
+        "crowd_reaction.mp4",
+        b"fake-type-b-video-bytes",
+        content_type="video/mp4",
+    )
+
+    response = client.post(
+        reverse("type-b-ingest"),
+        {"video_file": upload, "recorded_at": "2026-07-07"},
+    )
+
+    assert response.status_code == 302
+    video = Video.objects.get()
+    assert video.class_name == ""
+    assert video.theme == ""
+
+
+@pytest.mark.django_db
 def test_type_b_ingest_get_renders_form(authenticated_client):
     client, _user = authenticated_client
 

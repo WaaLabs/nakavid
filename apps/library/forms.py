@@ -6,8 +6,8 @@ from apps.library.models import Clip, Tag, TagCategory, Video
 
 
 class TypeAIngestMetadataForm(forms.Form):
-    class_name = forms.CharField(max_length=120, label="Class")
-    theme = forms.CharField(max_length=120, label="Theme")
+    class_name = forms.CharField(max_length=120, required=False, label="Class")
+    theme = forms.CharField(max_length=120, required=False, label="Theme")
     recorded_at = forms.DateField(label="Date")
     filename = forms.CharField(max_length=255, label="Filename")
     upload_length = forms.IntegerField(min_value=1, label="Upload length")
@@ -24,8 +24,8 @@ class TypeBIngestForm(forms.Form):
         label="Video file",
         help_text="Type B in-the-moment clip (under 5 minutes).",
     )
-    class_name = forms.CharField(max_length=120, label="Class")
-    theme = forms.CharField(max_length=120, label="Theme")
+    class_name = forms.CharField(max_length=120, required=False, label="Class")
+    theme = forms.CharField(max_length=120, required=False, label="Theme")
     recorded_at = forms.DateField(label="Date")
 
     def clean_video_file(self):
