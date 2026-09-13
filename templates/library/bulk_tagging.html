@@ -8,7 +8,12 @@
 {% endblock %}
 
 {% block content %}
-  
+  {% if untagged_only %}
+  <p class="hint">
+    Showing untagged videos and clips only —
+    <a href="{% url 'bulk-tagging' %}">show everything</a> instead.
+  </p>
+  {% endif %}
 
   {% if form.non_field_errors %}
   <div class="errors">{{ form.non_field_errors }}</div>
@@ -19,6 +24,7 @@
 
   <form method="post">
     {% csrf_token %}
+    {% if untagged_only %}<input type="hidden" name="untagged" value="1" />{% endif %}
 
     <div class="actions">
       <div class="field">
@@ -42,7 +48,7 @@
           {% endfor %}
         </ul>
         {% else %}
-        <p class="empty">No videos yet.</p>
+        <p class="empty">{% if untagged_only %}No untagged videos.{% else %}No videos yet.{% endif %}</p>
         {% endif %}
       </section>
 
@@ -55,7 +61,7 @@
           {% endfor %}
         </ul>
         {% else %}
-        <p class="empty">No clips yet.</p>
+        <p class="empty">{% if untagged_only %}No untagged clips.{% else %}No clips yet.{% endif %}</p>
         {% endif %}
       </section>
 
