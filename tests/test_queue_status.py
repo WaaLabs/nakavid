@@ -59,6 +59,18 @@ def test_queue_status_requires_login(client):
 
 
 @pytest.mark.django_db
+def test_renders_an_ingest_job_with_no_video(authenticated_client):
+    """An Immich-scan job has no video until it finds one — must not 500."""
+    client, _user = authenticated_client
+    Job.objects.create(job_type=Job.JobType.INGEST)
+
+    response = client.get(reverse("queue-status"))
+
+    assert response.status_code == 200
+    assert b"Ingest" in response.content
+
+
+@pytest.mark.django_db
 def test_queue_status_shows_totals_and_recent_jobs(authenticated_client, sample_video):
     client, _user = authenticated_client
 

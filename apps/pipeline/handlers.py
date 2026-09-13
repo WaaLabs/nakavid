@@ -6,6 +6,7 @@ from pathlib import Path
 from django.conf import settings
 from django.db import transaction
 
+from apps.library.immich_ingest import resolve_default_user, run_immich_ingest
 from apps.library.models import Clip, Combine, Video
 from apps.library.storage_paths import (
     build_combine_relative_path,
@@ -167,7 +168,17 @@ def handle_contact_sheet(job: Job) -> None:
 
 
 def handle_ingest(job: Job) -> None:
-    """Skeleton handler — real ingest pipeline stages land in later issues."""
+    """A web-triggered scan for new Nakavid/add-tagged videos in Immich.
+
+    Runs the exact same pull as `manage.py ingest_immich`, defaults and all —
+    see run_immich_ingest. Attributed to the single superuser, the same
+    fallback the CLI uses when --user is omitted; there's no equivalent to
+    pass here. Silent on success — new Video rows and their own probe jobs
+    are the feedback. An ImmichError (bad credentials, tag not found, an
+    ambiguous superuser, ...) propagates and lands this job in ERROR, same as
+    any other handler's typed error.
+    """
+    run_immich_ingest(user=resolve_default_user())
 
 
 def _mark_combine_error(combine: Combine) -> None:

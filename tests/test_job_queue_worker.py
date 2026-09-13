@@ -132,6 +132,25 @@ def test_process_job_captures_handler_errors_on_stderr(pending_job):
 
 
 @pytest.mark.django_db
+def test_an_immich_error_is_a_clean_one_line_stderr_not_a_traceback(pending_job):
+    from apps.library.immich import ImmichError
+
+    pending_job.status = Job.Status.PROCESSING
+    pending_job.claimed_at = timezone.now()
+    pending_job.save(update_fields=["status", "claimed_at"])
+
+    with patch(
+        "apps.pipeline.worker.dispatch_job",
+        side_effect=ImmichError("No Immich tag named 'Nakavid/add'"),
+    ):
+        process_job(pending_job)
+
+    pending_job.refresh_from_db()
+    assert pending_job.status == Job.Status.ERROR
+    assert pending_job.stderr == "No Immich tag named 'Nakavid/add'"
+
+
+@pytest.mark.django_db
 def test_dispatch_job_routes_all_job_types(video):
     probe_result = __import__("apps.pipeline.probe", fromlist=["ProbeResult"]).ProbeResult(
         duration_seconds=120,
@@ -146,6 +165,8 @@ def test_dispatch_job_routes_all_job_types(video):
         patch("apps.pipeline.handlers.run_ffmpeg_trim"),
         patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
         patch("apps.pipeline.handlers.run_ffmpeg_contact_sheet"),
+        patch("apps.pipeline.handlers.resolve_default_user", return_value=video.created_by),
+        patch("apps.pipeline.handlers.run_immich_ingest"),
     ):
         scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
         with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):

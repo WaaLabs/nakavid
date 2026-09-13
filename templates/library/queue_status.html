@@ -54,8 +54,8 @@
         <span class="status-badge status-error" title="Claimed longer than the {{ claim_timeout_minutes }} minute lease; the worker will return it to the queue.">stalled</span>
         {% endif %}
       </td>
-      <td>{{ job.video.title }}</td>
-      <td>{{ job.video.class_name }} / {{ job.video.theme }}</td>
+      <td>{% if job.video %}{{ job.video.title }}{% else %}—{% endif %}</td>
+      <td>{% if job.video %}{{ job.video.class_name }} / {{ job.video.theme }}{% else %}—{% endif %}</td>
       <td class="error-cell">
         {% if job.status == "error" and job.stderr %}
         <pre>{{ job.stderr }}</pre>
