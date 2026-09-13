@@ -13,6 +13,7 @@ from apps.library.views import (
     combine_builder_submit,
     combine_output,
     combines,
+    immich_scan,
     lesson_view,
     queue_requeue_job,
     queue_status,
@@ -72,6 +73,7 @@ urlpatterns = [
         name="video-contact-sheet",
     ),
     path("ingest/type-b/", type_b_ingest, name="type-b-ingest"),
+    path("immich-scan/", immich_scan, name="immich-scan"),
     path("ingest/type-a/", type_a_ingest, name="type-a-ingest"),
     path("ingest/type-a/uploads/", type_a_upload_create, name="type-a-upload-create"),
     path(

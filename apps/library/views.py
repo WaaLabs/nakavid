@@ -49,6 +49,7 @@ from apps.pipeline.enqueue import (
     STUB_DURATION_SECONDS,
     enqueue_clip_extraction_job,
     enqueue_combine_export_job,
+    enqueue_ingest_job,
     enqueue_probe_job,
 )
 from apps.pipeline.extraction import select_clip_segments
@@ -252,6 +253,22 @@ def type_b_ingest(request):
         form = TypeBIngestForm()
 
     return render(request, "library/type_b_ingest.html", {"form": form})
+
+
+@login_required
+@require_POST
+def immich_scan(request):
+    """Queue a scan for new Nakavid/add-tagged videos in Immich.
+
+    The scan itself — downloading whatever's new — is a background job, not
+    this request: some of those files are gigabytes, and Django doesn't run
+    long jobs in a request. New videos and their probe jobs will appear in
+    the queue and browse pages as the worker gets to them, same as any other
+    ingest path.
+    """
+    enqueue_ingest_job()
+    messages.success(request, "Immich scan queued.")
+    return redirect("queue-status")
 
 
 # Browse pages render a <video> element per card, so an unbounded queryset is

@@ -84,6 +84,17 @@ def configured_api_key() -> str:
     return api_key
 
 
+def immich_is_configured() -> bool:
+    """Whether it's worth offering an Immich action at all — not whether one
+    would actually succeed. configured_base_url() also enforces the LAN-only
+    rule, which needs a DNS lookup; that's still checked lazily, at actual
+    use, same as today. This is only for deciding whether to show a button."""
+    return bool(
+        (getattr(settings, "NAKAVID_IMMICH_URL", "") or "")
+        and (getattr(settings, "NAKAVID_IMMICH_API_KEY", "") or "")
+    )
+
+
 class ImmichClient:
     def __init__(self, *, base_url: str | None = None, api_key: str | None = None) -> None:
         self.base_url = base_url if base_url is not None else configured_base_url()

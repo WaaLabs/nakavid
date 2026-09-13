@@ -66,7 +66,11 @@ class Job(models.Model):
         CONTACT_SHEET = "contact_sheet", "Contact Sheet"
         COMBINE_EXPORT = "combine_export", "Combine Export"
 
-    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="jobs")
+    # Null only for an INGEST job — a scan hasn't found a video yet when it's
+    # queued. Every other job type is per-video and always sets this.
+    video = models.ForeignKey(
+        Video, on_delete=models.CASCADE, related_name="jobs", null=True, blank=True
+    )
     combine = models.ForeignKey(
         Combine, on_delete=models.CASCADE, related_name="jobs", null=True, blank=True
     )

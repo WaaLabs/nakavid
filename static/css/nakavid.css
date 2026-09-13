@@ -756,6 +756,27 @@ tbody tr:last-child td {
   color: var(--nv-accent);
 }
 
+/* A menu entry that's an action (a POST form), not a link — same look. */
+.nv-menu__panel button {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: var(--nv-radius-sm);
+  background: none;
+  color: var(--nv-text);
+  text-align: left;
+  font-size: 0.9rem;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nv-menu__panel button:hover {
+  background: var(--nv-surface);
+  color: var(--nv-accent);
+}
+
 /* On narrow screens the panel becomes part of the flow rather than an
  * overlay, so it cannot sit off the edge of the viewport. */
 @media (max-width: 40rem) {

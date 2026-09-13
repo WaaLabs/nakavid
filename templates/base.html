@@ -26,6 +26,12 @@
             <div class="nv-menu__panel">
               <a href="{% url 'type-a-ingest' %}">Long recording</a>
               <a href="{% url 'type-b-ingest' %}">Short recording</a>
+              {% if immich_configured %}
+              <form method="post" action="{% url 'immich-scan' %}">
+                {% csrf_token %}
+                <button type="submit">Scan Immich</button>
+              </form>
+              {% endif %}
             </div>
           </details>
 
