@@ -705,6 +705,8 @@ def tag_manager(request):
             "category_form": category_form,
             "tags": tags,
             "categories": categories,
+            "untagged_video_count": Video.objects.filter(tags__isnull=True).count(),
+            "untagged_clip_count": Clip.objects.filter(tags__isnull=True).count(),
         },
     )
 
@@ -757,7 +759,8 @@ def _bulk_tag_summary(*, video_count: int, clip_count: int, tag_count: int, acti
 @require_http_methods(["GET", "POST"])
 def bulk_tagging(request):
     if request.method == "POST":
-        form = BulkTagForm(request.POST)
+        untagged = request.POST.get("untagged") == "1"
+        form = BulkTagForm(request.POST, untagged_only=untagged)
         if form.is_valid():
             videos = list(form.cleaned_data["videos"])
             clips = list(form.cleaned_data["clips"])
@@ -783,11 +786,16 @@ def bulk_tagging(request):
                     action=action,
                 ),
             )
-            return redirect("bulk-tagging")
+            # A review queue: keep showing only what's left after this batch.
+            redirect_url = reverse("bulk-tagging")
+            if untagged:
+                redirect_url += "?untagged=1"
+            return redirect(redirect_url)
     else:
-        form = BulkTagForm()
+        untagged = request.GET.get("untagged") == "1"
+        form = BulkTagForm(untagged_only=untagged)
 
-    return render(request, "library/bulk_tagging.html", {"form": form})
+    return render(request, "library/bulk_tagging.html", {"form": form, "untagged_only": untagged})
 
 
 def _combine_builder_clip_payload(*, clips: list[Clip], request) -> list[dict[str, object]]:

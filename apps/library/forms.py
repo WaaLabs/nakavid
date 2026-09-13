@@ -114,14 +114,19 @@ class BulkTagForm(forms.Form):
     )
     action = forms.ChoiceField(choices=Action.choices, initial=Action.ADD, label="Action")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, untagged_only: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["videos"].queryset = Video.objects.order_by("-recorded_at", "-id")
-        self.fields["clips"].queryset = Clip.objects.select_related("video").order_by(
+        videos = Video.objects.order_by("-recorded_at", "-id")
+        clips = Clip.objects.select_related("video").order_by(
             "-video__recorded_at",
             "-highlight_score",
             "-id",
         )
+        if untagged_only:
+            videos = videos.filter(tags__isnull=True)
+            clips = clips.filter(tags__isnull=True)
+        self.fields["videos"].queryset = videos
+        self.fields["clips"].queryset = clips
         self.fields["tags"].queryset = Tag.objects.select_related("category").order_by(
             "label",
             "slug",

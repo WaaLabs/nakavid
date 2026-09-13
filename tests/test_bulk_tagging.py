@@ -180,6 +180,59 @@ def test_bulk_remove_tags_only_clears_selected(authenticated_client, library_ite
 
 
 @pytest.mark.django_db
+def test_untagged_only_hides_an_already_tagged_video(authenticated_client, library_items):
+    client, _user = authenticated_client
+    library_items["video_a"].tags.add(library_items["tag_warmup"])
+
+    response = client.get(reverse("bulk-tagging"), {"untagged": "1"})
+
+    form = response.context["form"]
+    assert library_items["video_a"] not in form.fields["videos"].queryset
+    assert library_items["video_b"] in form.fields["videos"].queryset
+
+
+@pytest.mark.django_db
+def test_untagged_only_hides_an_already_tagged_clip(authenticated_client, library_items):
+    client, _user = authenticated_client
+    library_items["clip_a"].tags.add(library_items["tag_warmup"])
+
+    response = client.get(reverse("bulk-tagging"), {"untagged": "1"})
+
+    form = response.context["form"]
+    assert library_items["clip_a"] not in form.fields["clips"].queryset
+    assert library_items["clip_b"] in form.fields["clips"].queryset
+
+
+@pytest.mark.django_db
+def test_untagged_only_shows_everything_when_absent(authenticated_client, library_items):
+    client, _user = authenticated_client
+    library_items["video_a"].tags.add(library_items["tag_warmup"])
+
+    response = client.get(reverse("bulk-tagging"))
+
+    assert b"full_lesson" in response.content
+    assert response.context["untagged_only"] is False
+
+
+@pytest.mark.django_db
+def test_untagged_only_redirect_preserves_the_filter(authenticated_client, library_items):
+    client, _user = authenticated_client
+
+    response = client.post(
+        reverse("bulk-tagging"),
+        {
+            "videos": [str(library_items["video_a"].id)],
+            "tags": [str(library_items["tag_warmup"].id)],
+            "action": "add",
+            "untagged": "1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response["Location"] == f"{reverse('bulk-tagging')}?untagged=1"
+
+
+@pytest.mark.django_db
 def test_bulk_tagging_requires_selection_and_tags(authenticated_client, library_items):
     client, _user = authenticated_client
     tag_warmup = library_items["tag_warmup"]

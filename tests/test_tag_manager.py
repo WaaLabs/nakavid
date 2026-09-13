@@ -1,12 +1,34 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
-from apps.library.models import Tag, TagCategory
+from apps.library.models import Tag, TagCategory, Video
+from apps.library.storage_paths import to_absolute_storage_path
 
 User = get_user_model()
+
+
+def _video(*, storage_root, user, title: str) -> Video:
+    return Video.objects.create(
+        title=title,
+        source_path=to_absolute_storage_path(storage_root, f"originals/2026/07/07/{title}.mp4"),
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        recorded_at=timezone.make_aware(datetime(2026, 7, 7, 12, 0)),
+        duration_seconds=60,
+        created_by=user,
+    )
+
+
+@pytest.fixture
+def storage_root(tmp_path, settings):
+    settings.NAKAVID_STORAGE_ROOT = tmp_path
+    return tmp_path
 
 
 @pytest.fixture
@@ -108,3 +130,28 @@ def test_tag_edit_and_delete(authenticated_client):
 def test_tag_and_category_registered_in_admin(admin_client):
     assert admin_client.get("/admin/library/tag/").status_code == 200
     assert admin_client.get("/admin/library/tagcategory/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_shows_a_callout_with_untagged_counts(authenticated_client, storage_root, coach_user):
+    client, _user = authenticated_client
+    _video(storage_root=storage_root, user=coach_user, title="untagged_one")
+    tagged = _video(storage_root=storage_root, user=coach_user, title="tagged")
+    tagged.tags.add(Tag.objects.create(slug="warmup", label="Warm-up"))
+
+    response = client.get(reverse("tag-manager"))
+
+    assert b"1 video" in response.content
+    assert b"no tags yet" in response.content
+    assert reverse("bulk-tagging").encode() + b"?untagged=1" in response.content
+
+
+@pytest.mark.django_db
+def test_hides_the_callout_when_nothing_is_untagged(authenticated_client, storage_root, coach_user):
+    client, _user = authenticated_client
+    video = _video(storage_root=storage_root, user=coach_user, title="tagged")
+    video.tags.add(Tag.objects.create(slug="warmup", label="Warm-up"))
+
+    response = client.get(reverse("tag-manager"))
+
+    assert b"has no tags yet" not in response.content

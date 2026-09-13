@@ -11,7 +11,16 @@
   <a class="button secondary" href="{% url 'bulk-tagging' %}">Bulk tagging</a>
 </p>
 
-  
+{% if untagged_video_count or untagged_clip_count %}
+<p class="hint">
+  {% if untagged_video_count %}{{ untagged_video_count }} video{{ untagged_video_count|pluralize }}{% endif %}
+  {% if untagged_video_count and untagged_clip_count %}and{% endif %}
+  {% if untagged_clip_count %}{{ untagged_clip_count }} clip{{ untagged_clip_count|pluralize }}{% endif %}
+  {% if untagged_video_count and untagged_clip_count %}have{% else %}has{% endif %}
+  no tags yet —
+  <a href="{% url 'bulk-tagging' %}?untagged=1">tag them now</a>.
+</p>
+{% endif %}
 
   <div class="panels">
     <section class="panel">
