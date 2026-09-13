@@ -103,6 +103,24 @@ def test_pulls_only_the_videos(storage_root, superuser):
 
 
 @pytest.mark.django_db
+def test_class_name_and_theme_are_optional(storage_root, superuser):
+    """NakaVid isn't school-specific — class/theme are free-text, not required."""
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}),
+        patch.object(ImmichClient, "tagged_assets", return_value=ASSETS),
+        patch.object(ImmichClient, "download_asset", _fake_download),
+        patch.object(ImmichClient, "upsert_tag", return_value={"id": "imported-tag-1"}),
+        patch.object(ImmichClient, "tag_assets"),
+        patch.object(ImmichClient, "untag_assets"),
+    ):
+        call_command("ingest_immich", stdout=StringIO())
+
+    for video in Video.objects.all():
+        assert video.class_name == ""
+        assert video.theme == ""
+
+
+@pytest.mark.django_db
 def test_imported_videos_are_retagged_in_immich(storage_root, superuser):
     output, _, retags = _run()
 

@@ -74,8 +74,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser) -> None:
         parser.add_argument("directory", type=Path)
-        parser.add_argument("--class-name", required=True)
-        parser.add_argument("--theme", required=True)
+        parser.add_argument("--class-name", default="", help="Optional. Free-text metadata.")
+        parser.add_argument("--theme", default="", help="Optional. Free-text metadata.")
         parser.add_argument(
             "--type",
             choices=["long", "short"],

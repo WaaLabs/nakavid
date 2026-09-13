@@ -223,6 +223,31 @@ def test_type_a_upload_api_happy_path(authenticated_client, storage_root):
 
 
 @pytest.mark.django_db
+def test_class_name_and_theme_are_optional(authenticated_client, storage_root):
+    """NakaVid isn't school-specific — class/theme are free-text, not required."""
+    client, _user = authenticated_client
+
+    create_response = client.post(
+        reverse("type-a-upload-create"),
+        data=json.dumps(
+            {
+                "recorded_at": "2026-07-07",
+                "filename": "lesson_recording.mp4",
+                "upload_length": 10,
+            }
+        ),
+        content_type="application/json",
+        HTTP_TUS_RESUMABLE=TUS_RESUMABLE_HEADER,
+    )
+
+    assert create_response.status_code == 201
+    upload_id = create_response["Location"].rstrip("/").rsplit("/", 1)[-1]
+    metadata = load_metadata(storage_root, upload_id)
+    assert metadata.class_name == ""
+    assert metadata.theme == ""
+
+
+@pytest.mark.django_db
 def test_type_a_upload_resume_after_interrupt(authenticated_client, storage_root):
     client, user = authenticated_client
 
