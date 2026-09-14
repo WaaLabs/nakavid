@@ -16,6 +16,10 @@
     <label for="id_recorded_date">Date</label>
     {{ form.recorded_date }}
   </div>
+  <div class="field">
+    <label for="id_sort">Sort by</label>
+    {{ form.sort }}
+  </div>
   <div class="actions">
     <button type="submit">Filter</button>
     <a class="button secondary" href="{% url 'source-videos' %}">Clear</a>
@@ -45,7 +49,12 @@
       <p class="card__meta">{{ row.video.class_name }} · {{ row.video.theme }}</p>
       <div class="card__footer">
         <span class="card__meta">
-          {{ row.video.recorded_at|date:"Y-m-d" }}{% if row.duration_label %} · {{ row.duration_label }}{% endif %}
+          {% if sort == "imported" %}
+          Imported {{ row.video.created_at|date:"Y-m-d" }}
+          {% else %}
+          {{ row.video.recorded_at|date:"Y-m-d" }}
+          {% endif %}
+          {% if row.duration_label %} · {{ row.duration_label }}{% endif %}
         </span>
         <span class="badge">{{ row.video.clips.count }} clips</span>
       </div>

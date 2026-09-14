@@ -10,9 +10,7 @@ a folder spanning several days lands in the right places.
 
 from __future__ import annotations
 
-import json
 import shutil
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,7 +18,6 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
 from django.utils.text import get_valid_filename
 
 from apps.library.models import Clip, Video
@@ -28,6 +25,7 @@ from apps.library.storage_paths import (
     build_originals_relative_path,
     to_absolute_storage_path,
 )
+from apps.library.video_metadata import probe_creation_time
 from apps.pipeline.enqueue import STUB_DURATION_SECONDS, enqueue_probe_job
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".mts", ".m2ts", ".webm"}
@@ -39,34 +37,10 @@ def recorded_at_for(file_path: Path) -> datetime:
     A directory of footage usually spans days, so taking the date from each
     file beats one flag applied to everything.
     """
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format_tags=creation_time",
-                "-of",
-                "json",
-                str(file_path),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        tags = (json.loads(result.stdout).get("format") or {}).get("tags") or {}
-        raw = tags.get("creation_time")
-        if raw:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            if timezone.is_naive(parsed):
-                parsed = timezone.make_aware(parsed, UTC)
-            return parsed
-    except (FileNotFoundError, subprocess.CalledProcessError, ValueError, json.JSONDecodeError):
-        pass
-
-    stamp = datetime.fromtimestamp(file_path.stat().st_mtime, tz=UTC)
-    return stamp
+    probed = probe_creation_time(file_path)
+    if probed is not None:
+        return probed
+    return datetime.fromtimestamp(file_path.stat().st_mtime, tz=UTC)
 
 
 class Command(BaseCommand):

@@ -3,7 +3,7 @@
 {% block title %}Upload long recording — NakaVid{% endblock %}
 {% block heading %}Upload a long recording{% endblock %}
 {% block intro %}
-<p class="intro">Upload a long recording with class, date, and theme metadata. Large files resume after a dropped connection.</p>
+<p class="intro">Upload a long recording, with optional class and theme metadata. The recording date is read from the file itself. Large files resume after a dropped connection.</p>
 {% endblock %}
 
 {% block content %}
@@ -35,11 +35,6 @@
     <div class="field">
       <label for="theme">Theme</label>
       <input type="text" id="theme" name="theme" />
-    </div>
-
-    <div class="field">
-      <label for="recorded-at">Date</label>
-      <input type="date" id="recorded-at" name="recorded_at" required />
     </div>
 
     <button type="submit" id="upload-button">Upload long recording</button>
@@ -130,7 +125,6 @@
           body: JSON.stringify({
             class_name: metadata.className,
             theme: metadata.theme,
-            recorded_at: metadata.recordedAt,
             filename: file.name,
             upload_length: file.size,
           }),
@@ -234,7 +228,6 @@
           await uploadFile(file, {
             className: document.getElementById("class-name").value,
             theme: document.getElementById("theme").value,
-            recordedAt: document.getElementById("recorded-at").value,
           });
         } catch (error) {
           showMessage(error.message || "Upload failed.", true);

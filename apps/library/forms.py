@@ -4,11 +4,22 @@ from django.utils.text import get_valid_filename, slugify
 
 from apps.library.models import Clip, Tag, TagCategory, Video
 
+# A video's recorded_at (read from the file's own metadata, or hand-typed
+# before that existed) and created_at (when it landed in NakaVid) usually
+# agree, but not always — footage ingested well after it was filmed, or with
+# no metadata to read, is the case this exists for. Shared by the two browse
+# pages that list videos/clips chronologically.
+SORT_RECORDED = "recorded"
+SORT_IMPORTED = "imported"
+SORT_CHOICES = (
+    (SORT_RECORDED, "Recorded date"),
+    (SORT_IMPORTED, "Imported date"),
+)
+
 
 class TypeAIngestMetadataForm(forms.Form):
     class_name = forms.CharField(max_length=120, required=False, label="Class")
     theme = forms.CharField(max_length=120, required=False, label="Theme")
-    recorded_at = forms.DateField(label="Date")
     filename = forms.CharField(max_length=255, label="Filename")
     upload_length = forms.IntegerField(min_value=1, label="Upload length")
 
@@ -26,7 +37,6 @@ class TypeBIngestForm(forms.Form):
     )
     class_name = forms.CharField(max_length=120, required=False, label="Class")
     theme = forms.CharField(max_length=120, required=False, label="Theme")
-    recorded_at = forms.DateField(label="Date")
 
     def clean_video_file(self):
         uploaded = self.cleaned_data["video_file"]
@@ -42,6 +52,9 @@ class TypeBIngestForm(forms.Form):
 class SourceVideosFilterForm(forms.Form):
     class_name = forms.CharField(max_length=120, required=False, label="Class")
     recorded_date = forms.DateField(required=False, label="Date")
+    sort = forms.ChoiceField(
+        choices=SORT_CHOICES, required=False, initial=SORT_RECORDED, label="Sort by"
+    )
 
 
 class ClipsBrowserFilterForm(forms.Form):
@@ -59,6 +72,9 @@ class ClipsBrowserFilterForm(forms.Form):
         min_value=0,
         max_value=100,
         label="Min highlight score",
+    )
+    sort = forms.ChoiceField(
+        choices=SORT_CHOICES, required=False, initial=SORT_RECORDED, label="Sort by"
     )
 
 

@@ -65,7 +65,13 @@ Do not touch `backups/`.
   Folders are keyed on date only, so class/theme spelling or a later rename
   never touches the filesystem — but it also means the DB is the only copy of
   which class or theme a video belongs to; there is no disk-alone recovery
-  for that half.
+  for that half. The recording date itself is read from the file's own
+  metadata (ffprobe's `creation_time` tag), so a file has to exist before its
+  dated folder can be decided — every ingest path that doesn't already have
+  the file on disk up front (an Immich pull, a browser upload) lands it under
+  `/nakavid/.staging/{token}/{filename}` first, probes it, then moves it into
+  place. `.staging/` never holds anything for long and nothing serves out of
+  it.
 
 ## Code conventions
 

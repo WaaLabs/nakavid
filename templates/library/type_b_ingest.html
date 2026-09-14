@@ -3,7 +3,7 @@
 {% block title %}Upload short recording — NakaVid{% endblock %}
 {% block heading %}Upload a short recording{% endblock %}
 {% block intro %}
-<p class="intro">Upload a short recording — already usable, so it skips extraction. Give it class, date, and theme metadata.</p>
+<p class="intro">Upload a short recording — already usable, so it skips extraction. Give it optional class and theme metadata; the recording date is read from the file itself.</p>
 {% endblock %}
 
 {% block content %}
@@ -43,14 +43,6 @@
       {{ form.theme }}
       {% if form.theme.errors %}
       <div class="errors">{{ form.theme.errors }}</div>
-      {% endif %}
-    </div>
-
-    <div class="field">
-      <label for="id_recorded_at">Date</label>
-      {{ form.recorded_at }}
-      {% if form.recorded_at.errors %}
-      <div class="errors">{{ form.recorded_at.errors }}</div>
       {% endif %}
     </div>
 

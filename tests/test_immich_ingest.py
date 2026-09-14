@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
+from django.utils import timezone
 
 from apps.library.immich import ImmichAsset, ImmichClient, ImmichError, configured_base_url
 from apps.library.models import Video
@@ -210,6 +212,38 @@ def test_files_land_under_their_own_recording_dates(storage_root, superuser):
     paths = sorted(video.source_path for video in Video.objects.all())
     assert "originals/2026/05/04/lesson_one.mp4" in paths[0]
     assert "originals/2026/06/17/lesson_two.mov" in paths[1]
+
+
+@pytest.mark.django_db
+def test_the_files_own_metadata_wins_over_immichs_reported_date(storage_root, superuser):
+    """Immich's asset date is only a fallback for footage with no tag of its own."""
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}),
+        patch.object(ImmichClient, "tagged_assets", return_value=ASSETS[:1]),
+        patch.object(ImmichClient, "download_asset", _fake_download),
+        patch.object(ImmichClient, "upsert_tag", return_value={"id": "imported-tag-1"}),
+        patch.object(ImmichClient, "tag_assets"),
+        patch.object(ImmichClient, "untag_assets"),
+        patch(
+            "apps.library.immich_ingest.probe_creation_time",
+            return_value=timezone.make_aware(datetime(2019, 1, 2)),
+        ),
+    ):
+        call_command("ingest_immich", stdout=StringIO())
+
+    video = Video.objects.get()
+    assert "originals/2019/01/02/" in video.source_path
+    assert video.recorded_at.date() == date(2019, 1, 2)
+
+
+@pytest.mark.django_db
+def test_the_staging_directory_does_not_linger_after_a_pull(storage_root, superuser):
+    _run()
+
+    # The per-asset scratch folders are cleaned up once each file is moved
+    # into place; nothing keeps growing across runs.
+    staging_root = storage_root / ".staging"
+    assert list(staging_root.iterdir()) == [] if staging_root.exists() else True
 
 
 @pytest.mark.django_db

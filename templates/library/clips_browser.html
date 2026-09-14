@@ -24,6 +24,10 @@
     <label for="id_source">Source</label>
     {{ form.source }}
   </div>
+  <div class="field">
+    <label for="id_sort">Sort by</label>
+    {{ form.sort }}
+  </div>
   <div class="actions">
     <button type="submit">Filter</button>
     <a class="button secondary" href="{% url 'clips-browser' %}">Clear</a>
@@ -62,7 +66,14 @@
         {{ clip.source_range_label }} <span class="card__timecode-of">in source</span>
       </p>
       <div class="card__footer">
-        <span class="card__meta">{{ clip.video.recorded_at|date:"Y-m-d" }} · {{ clip.duration_label }}</span>
+        <span class="card__meta">
+          {% if sort == "imported" %}
+          Imported {{ clip.video.created_at|date:"Y-m-d" }}
+          {% else %}
+          {{ clip.video.recorded_at|date:"Y-m-d" }}
+          {% endif %}
+          · {{ clip.duration_label }}
+        </span>
         <span class="badge badge--score">{{ clip.highlight_score }}</span>
       </div>
     </div>
