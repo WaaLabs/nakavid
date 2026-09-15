@@ -4,12 +4,14 @@ import json
 import shutil
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
+from django.utils import timezone
 from django.utils.text import get_valid_filename
 
 from apps.library.storage_paths import build_originals_relative_path, to_absolute_storage_path
+from apps.library.video_metadata import probe_creation_time
 
 UPLOADS_DIRNAME = ".uploads"
 META_FILENAME = "meta.json"
@@ -30,26 +32,12 @@ class UploadMetadata:
     user_id: int
     class_name: str
     theme: str
-    recorded_at: str
     filename: str
     upload_length: int
 
     @property
-    def recorded_on(self) -> date:
-        return date.fromisoformat(self.recorded_at)
-
-    @property
     def safe_filename(self) -> str:
         return get_valid_filename(self.filename)
-
-    def relative_path(self) -> str:
-        return build_originals_relative_path(
-            recorded_at=self.recorded_on,
-            filename=self.safe_filename,
-        )
-
-    def absolute_source_path(self, storage_root: Path) -> str:
-        return to_absolute_storage_path(storage_root, self.relative_path())
 
 
 def uploads_root(storage_root: Path) -> Path:
@@ -74,7 +62,6 @@ def create_upload(
     user_id: int,
     class_name: str,
     theme: str,
-    recorded_at: date,
     filename: str,
     upload_length: int,
 ) -> UploadMetadata:
@@ -87,7 +74,6 @@ def create_upload(
         user_id=user_id,
         class_name=class_name,
         theme=theme,
-        recorded_at=recorded_at.isoformat(),
         filename=filename,
         upload_length=upload_length,
     )
@@ -146,7 +132,9 @@ def append_chunk(
     return new_size
 
 
-def finalize_upload(*, storage_root: Path, upload_id: str, user_id: int) -> tuple[Path, str]:
+def finalize_upload(
+    *, storage_root: Path, upload_id: str, user_id: int
+) -> tuple[Path, str, datetime]:
     metadata = load_metadata(storage_root, upload_id)
     if metadata.user_id != user_id:
         raise ResumableUploadError("Upload not found.", status_code=404)
@@ -155,7 +143,14 @@ def finalize_upload(*, storage_root: Path, upload_id: str, user_id: int) -> tupl
     if data_file.stat().st_size != metadata.upload_length:
         raise ResumableUploadError("Upload is incomplete.")
 
-    relative_path = metadata.relative_path()
+    # Only now, with the file fully assembled, can its own metadata be read.
+    # No other date is available for an upload — falls back to now, not a
+    # file mtime, which for a just-written file means the same thing anyway.
+    recorded_at = probe_creation_time(data_file) or timezone.now()
+
+    relative_path = build_originals_relative_path(
+        recorded_at=recorded_at, filename=metadata.safe_filename
+    )
     destination = storage_root / relative_path
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(data_file), destination)
@@ -163,4 +158,5 @@ def finalize_upload(*, storage_root: Path, upload_id: str, user_id: int) -> tupl
     upload_directory = upload_dir(storage_root, upload_id)
     shutil.rmtree(upload_directory)
 
-    return destination, metadata.absolute_source_path(storage_root)
+    source_path = to_absolute_storage_path(storage_root, relative_path)
+    return destination, source_path, recorded_at

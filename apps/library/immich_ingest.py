@@ -10,6 +10,7 @@ Job-specific code in it — callers supply where output lines go (or don't).
 
 from __future__ import annotations
 
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -21,7 +22,12 @@ from django.utils.text import get_valid_filename
 
 from apps.library.immich import ImmichClient, ImmichError
 from apps.library.models import Clip, Video
-from apps.library.storage_paths import build_originals_relative_path, to_absolute_storage_path
+from apps.library.storage_paths import (
+    build_originals_relative_path,
+    build_staging_relative_path,
+    to_absolute_storage_path,
+)
+from apps.library.video_metadata import probe_creation_time
 from apps.pipeline.enqueue import STUB_DURATION_SECONDS, enqueue_probe_job
 
 DEFAULT_TAG = "Nakavid/add"
@@ -100,26 +106,44 @@ def run_immich_ingest(
         if limit and pulled >= limit:
             break
 
-        recorded_at = _recorded_at(asset.created_at)
-        relative_path = build_originals_relative_path(
-            recorded_at=recorded_at,
-            filename=get_valid_filename(asset.original_file_name),
-        )
-        storage_path = to_absolute_storage_path(storage_root, relative_path)
-
-        write_out(
-            f"{'would pull' if dry_run else 'pull '} {asset.original_file_name} "
-            f"({recorded_at.date()}) -> {relative_path}"
-        )
+        filename = get_valid_filename(asset.original_file_name)
         if dry_run:
+            # Nothing is downloaded, so the file's own metadata isn't
+            # readable yet — report Immich's date as an estimate. The real
+            # run below reads the file itself and may land it a day either
+            # side of this if Immich's own date disagrees.
+            estimated_at = _recorded_at(asset.created_at)
+            relative_path = build_originals_relative_path(
+                recorded_at=estimated_at, filename=filename
+            )
+            write_out(
+                f"would pull {asset.original_file_name} "
+                f"(~{estimated_at.date()}) -> {relative_path}"
+            )
             pulled += 1
             continue
 
+        staging_path = storage_root / build_staging_relative_path(asset.id, filename)
         try:
-            client.download_asset(asset.id, storage_root / relative_path)
+            client.download_asset(asset.id, staging_path)
         except ImmichError as exc:
             write_err(f"  failed: {exc}")
             continue
+
+        # The file's own creation_time tag is the trustworthy source; Immich's
+        # asset metadata is a fallback for footage that has none.
+        recorded_at = probe_creation_time(staging_path) or _recorded_at(asset.created_at)
+        relative_path = build_originals_relative_path(recorded_at=recorded_at, filename=filename)
+        storage_path = to_absolute_storage_path(storage_root, relative_path)
+        destination = storage_root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(staging_path), destination)
+        try:
+            staging_path.parent.rmdir()
+        except OSError:
+            pass
+
+        write_out(f"pull  {asset.original_file_name} ({recorded_at.date()}) -> {relative_path}")
 
         with transaction.atomic():
             video = Video.objects.create(

@@ -130,6 +130,72 @@ def test_source_videos_filter_by_date(
 
 
 @pytest.mark.django_db
+def test_source_videos_default_to_recorded_date_order(
+    authenticated_client, coach_user, storage_root
+):
+    client, _user = authenticated_client
+    older = Video.objects.create(
+        title="older_footage",
+        source_path=to_absolute_storage_path(storage_root, "originals/2020/01/01/older.mp4"),
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        recorded_at=timezone.make_aware(datetime(2020, 1, 1)),
+        duration_seconds=60,
+        created_by=coach_user,
+    )
+    newer = Video.objects.create(
+        title="newer_footage",
+        source_path=to_absolute_storage_path(storage_root, "originals/2026/01/01/newer.mp4"),
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        recorded_at=timezone.make_aware(datetime(2026, 1, 1)),
+        duration_seconds=60,
+        created_by=coach_user,
+    )
+
+    response = client.get(reverse("source-videos"))
+
+    videos = [row["video"] for row in response.context["video_rows"]]
+    assert videos == [newer, older]
+
+
+@pytest.mark.django_db
+def test_source_videos_can_sort_by_imported_date_instead(
+    authenticated_client, coach_user, storage_root
+):
+    """Recorded and imported dates can disagree — footage dug out of an
+    archive well after it was filmed is exactly the case this exists for."""
+    client, _user = authenticated_client
+    older = Video.objects.create(
+        title="older_footage",
+        source_path=to_absolute_storage_path(storage_root, "originals/2020/01/01/older.mp4"),
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        recorded_at=timezone.make_aware(datetime(2020, 1, 1)),
+        duration_seconds=60,
+        created_by=coach_user,
+    )
+    newer = Video.objects.create(
+        title="newer_footage",
+        source_path=to_absolute_storage_path(storage_root, "originals/2026/01/01/newer.mp4"),
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        recorded_at=timezone.make_aware(datetime(2026, 1, 1)),
+        duration_seconds=60,
+        created_by=coach_user,
+    )
+    # older was recorded first but imported after newer.
+    Video.objects.filter(pk=older.pk).update(created_at=timezone.make_aware(datetime(2026, 6, 1)))
+    Video.objects.filter(pk=newer.pk).update(created_at=timezone.make_aware(datetime(2026, 1, 2)))
+
+    response = client.get(reverse("source-videos"), {"sort": "imported"})
+
+    videos = [row["video"] for row in response.context["video_rows"]]
+    assert videos == [older, newer]
+    assert b"Imported 2026-06-01" in response.content
+
+
+@pytest.mark.django_db
 def test_video_stream_requires_login(client, sample_videos):
     type_a, _type_b = sample_videos
 

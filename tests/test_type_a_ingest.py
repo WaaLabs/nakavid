@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.library.models import Clip, Video
 from apps.library.resumable_upload import (
@@ -25,6 +27,16 @@ from apps.library.storage_paths import (
 from apps.pipeline.models import Job
 
 User = get_user_model()
+
+# The uploaded bytes in these tests aren't a real video, so ffprobe can't find
+# a creation_time tag in them — finalize_upload falls back to timezone.now().
+# Pin it so paths are assertable, the same way a real recording's own tag
+# would pin them.
+PROBED_AT = timezone.make_aware(datetime(2026, 7, 7))
+
+
+def probes_to(when: datetime):
+    return patch("apps.library.resumable_upload.probe_creation_time", return_value=when)
 
 
 @pytest.fixture
@@ -52,7 +64,6 @@ def _create_session(
         user_id=user_id,
         class_name="A",
         theme="Animals",
-        recorded_at=date(2026, 7, 7),
         filename=filename,
         upload_length=upload_length,
     )
@@ -92,20 +103,39 @@ def test_chunk_assembly_and_finalize(storage_root):
     )
     assert offset == len(payload)
 
-    destination, source_path = finalize_upload(
-        storage_root=storage_root,
-        upload_id=upload_id,
-        user_id=user_id,
-    )
+    with probes_to(PROBED_AT):
+        destination, source_path, recorded_at = finalize_upload(
+            storage_root=storage_root,
+            upload_id=upload_id,
+            user_id=user_id,
+        )
     assert destination.read_bytes() == payload
+    assert recorded_at == PROBED_AT
     assert source_path == to_absolute_storage_path(
         storage_root,
         build_originals_relative_path(
-            recorded_at=date(2026, 7, 7),
+            recorded_at=PROBED_AT,
             filename="lesson_recording.mp4",
         ),
     )
     assert not (storage_root / ".uploads" / upload_id).exists()
+
+
+def test_finalize_falls_back_to_now_with_no_creation_time_tag(storage_root):
+    """No mock here — the fake payload really has no tag ffprobe can read."""
+    user_id = 42
+    payload = b"not a real video"
+    upload_id = _create_session(storage_root, user_id=user_id, upload_length=len(payload))
+    append_chunk(
+        storage_root=storage_root, upload_id=upload_id, user_id=user_id, offset=0, chunk=payload
+    )
+
+    before = timezone.now()
+    _destination, _source_path, recorded_at = finalize_upload(
+        storage_root=storage_root, upload_id=upload_id, user_id=user_id
+    )
+
+    assert before <= recorded_at <= timezone.now()
 
 
 def test_resume_rejects_wrong_offset(storage_root):
@@ -152,7 +182,6 @@ def test_type_a_upload_api_happy_path(authenticated_client, storage_root):
             {
                 "class_name": "A",
                 "theme": "Animals",
-                "recorded_at": "2026-07-07",
                 "filename": "lesson_recording.mp4",
                 "upload_length": len(payload),
             }
@@ -189,18 +218,19 @@ def test_type_a_upload_api_happy_path(authenticated_client, storage_root):
     assert head_response["Upload-Offset"] == "10"
 
     second_chunk = payload[10:]
-    patch_response = client.patch(
-        upload_url,
-        data=second_chunk,
-        content_type="application/offset+octet-stream",
-        HTTP_UPLOAD_OFFSET="10",
-        HTTP_TUS_RESUMABLE=TUS_RESUMABLE_HEADER,
-    )
+    with probes_to(PROBED_AT):
+        patch_response = client.patch(
+            upload_url,
+            data=second_chunk,
+            content_type="application/offset+octet-stream",
+            HTTP_UPLOAD_OFFSET="10",
+            HTTP_TUS_RESUMABLE=TUS_RESUMABLE_HEADER,
+        )
     assert patch_response.status_code == 201
     assert patch_response["Upload-Offset"] == str(len(payload))
 
     relative_path = build_originals_relative_path(
-        recorded_at=date(2026, 7, 7),
+        recorded_at=PROBED_AT,
         filename="lesson_recording.mp4",
     )
     saved_file = storage_root / relative_path
@@ -214,6 +244,7 @@ def test_type_a_upload_api_happy_path(authenticated_client, storage_root):
     assert video.orientation == Video.Orientation.LANDSCAPE
     assert video.class_name == "A"
     assert video.theme == "Animals"
+    assert video.recorded_at == PROBED_AT
     assert video.duration_seconds == 1
     assert video.created_by == user
     assert Clip.objects.count() == 0
@@ -231,7 +262,6 @@ def test_class_name_and_theme_are_optional(authenticated_client, storage_root):
         reverse("type-a-upload-create"),
         data=json.dumps(
             {
-                "recorded_at": "2026-07-07",
                 "filename": "lesson_recording.mp4",
                 "upload_length": 10,
             }
@@ -258,7 +288,6 @@ def test_type_a_upload_resume_after_interrupt(authenticated_client, storage_root
             {
                 "class_name": "B",
                 "theme": "Sports",
-                "recorded_at": "2026-07-08",
                 "filename": "match_day.mp4",
                 "upload_length": len(payload),
             }
@@ -285,17 +314,19 @@ def test_type_a_upload_resume_after_interrupt(authenticated_client, storage_root
     assert resume_offset == len(first_half)
 
     second_half = payload[resume_offset:]
-    patch_response = client.patch(
-        upload_url,
-        data=second_half,
-        content_type="application/offset+octet-stream",
-        HTTP_UPLOAD_OFFSET=str(resume_offset),
-        HTTP_TUS_RESUMABLE=TUS_RESUMABLE_HEADER,
-    )
+    recorded_at = timezone.make_aware(datetime(2026, 7, 8))
+    with probes_to(recorded_at):
+        patch_response = client.patch(
+            upload_url,
+            data=second_half,
+            content_type="application/offset+octet-stream",
+            HTTP_UPLOAD_OFFSET=str(resume_offset),
+            HTTP_TUS_RESUMABLE=TUS_RESUMABLE_HEADER,
+        )
     assert patch_response.status_code == 201
 
     relative_path = build_originals_relative_path(
-        recorded_at=date(2026, 7, 8),
+        recorded_at=recorded_at,
         filename="match_day.mp4",
     )
     assert (storage_root / relative_path).read_bytes() == payload
@@ -323,5 +354,4 @@ def test_load_metadata_round_trip(storage_root):
     assert metadata.user_id == user_id
     assert metadata.class_name == "A"
     assert metadata.theme == "Animals"
-    assert metadata.recorded_on == date(2026, 7, 7)
     assert metadata.safe_filename == "lesson_recording.mp4"

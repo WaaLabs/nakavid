@@ -8,6 +8,7 @@ from pathlib import PurePosixPath
 ORIGINALS_PREFIX = "originals"
 HIGHLIGHTS_PREFIX = "highlights"
 COMBINES_PREFIX = "combines"
+STAGING_PREFIX = ".staging"
 _PATH_SEGMENT_RE = re.compile(
     r"^originals/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/(?P<filename>[^/]+)$"
 )
@@ -38,6 +39,19 @@ def build_originals_relative_path(
         / f"{recorded_at.day:02d}"
         / filename
     )
+
+
+def build_staging_relative_path(token: str, filename: str) -> str:
+    """A scratch location for a file whose dated folder isn't known yet.
+
+    A video's recording date is read from the file itself, which means the
+    file has to exist before the date does — the opposite order every other
+    build_* path assumes. Land it here first, under a token unique to the
+    ingest (an Immich asset id, an upload id, a uuid), then move it once the
+    real date is known. Outside originals/ and highlights/ so nothing scans
+    or serves a file mid-ingest.
+    """
+    return str(PurePosixPath(STAGING_PREFIX) / token / filename)
 
 
 def build_highlight_relative_paths(

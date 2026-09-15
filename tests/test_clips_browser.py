@@ -144,6 +144,38 @@ def test_clips_browser_filter_by_min_score(authenticated_client, sample_clips):
 
 
 @pytest.mark.django_db
+def test_clips_browser_defaults_to_recorded_date_order(authenticated_client, sample_clips):
+    client, _user = authenticated_client
+    clip_a, clip_b = sample_clips  # video_a recorded 07-01, video_b recorded 07-07
+
+    response = client.get(reverse("clips-browser"))
+
+    clips = list(response.context["page"])
+    assert clips == [clip_b, clip_a]
+
+
+@pytest.mark.django_db
+def test_clips_browser_can_sort_by_imported_date_instead(authenticated_client, sample_clips):
+    """Recorded and imported dates can disagree — footage dug out of an
+    archive well after it was filmed is exactly the case this exists for."""
+    client, _user = authenticated_client
+    clip_a, clip_b = sample_clips
+    # video_a was recorded first but imported after video_b.
+    Video.objects.filter(pk=clip_a.video_id).update(
+        created_at=timezone.make_aware(datetime(2026, 8, 1))
+    )
+    Video.objects.filter(pk=clip_b.video_id).update(
+        created_at=timezone.make_aware(datetime(2026, 7, 15))
+    )
+
+    response = client.get(reverse("clips-browser"), {"sort": "imported"})
+
+    clips = list(response.context["page"])
+    assert clips == [clip_a, clip_b]
+    assert b"Imported 2026-08-01" in response.content
+
+
+@pytest.mark.django_db
 def test_clip_stream_requires_login(client, sample_clips):
     clip_a, _clip_b = sample_clips
 

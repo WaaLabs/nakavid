@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, time
+import uuid
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,6 +19,8 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.library.duration import format_duration_seconds, format_timecode_seconds
 from apps.library.forms import (
+    SORT_IMPORTED,
+    SORT_RECORDED,
     BulkTagForm,
     ClipsBrowserFilterForm,
     CombineBuilderSubmitForm,
@@ -42,9 +44,11 @@ from apps.library.resumable_upload import (
 )
 from apps.library.storage_paths import (
     build_originals_relative_path,
+    build_staging_relative_path,
     to_absolute_storage_path,
     to_accel_redirect_path,
 )
+from apps.library.video_metadata import probe_creation_time
 from apps.pipeline.enqueue import (
     STUB_DURATION_SECONDS,
     enqueue_clip_extraction_job,
@@ -125,7 +129,6 @@ def type_a_upload_create(request):
         user_id=request.user.id,
         class_name=form.cleaned_data["class_name"],
         theme=form.cleaned_data["theme"],
-        recorded_at=form.cleaned_data["recorded_at"],
         filename=form.cleaned_data["filename"],
         upload_length=form.cleaned_data["upload_length"],
     )
@@ -173,14 +176,13 @@ def type_a_upload_detail(request, upload_id: str):
         if new_offset < upload_metadata.upload_length:
             return _tus_response(upload_offset=new_offset)
 
-        destination, source_path = finalize_upload(
+        destination, source_path, recorded_at = finalize_upload(
             storage_root=storage_root,
             upload_id=upload_id,
             user_id=request.user.id,
         )
         duration_seconds = STUB_DURATION_SECONDS
         title = Path(destination.name).stem
-        recorded_at = timezone.make_aware(datetime.combine(upload_metadata.recorded_on, time.min))
         with transaction.atomic():
             video = Video.objects.create(
                 title=title,
@@ -207,23 +209,34 @@ def type_b_ingest(request):
     if request.method == "POST":
         form = TypeBIngestForm(request.POST, request.FILES)
         if form.is_valid():
-            relative_path = build_originals_relative_path(
-                recorded_at=form.cleaned_data["recorded_at"],
-                filename=form.cleaned_filename(),
-            )
             storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
-            destination = storage_root / relative_path
-            source_path = to_absolute_storage_path(storage_root, relative_path)
+            filename = form.cleaned_filename()
 
+            # The recording date comes from the file's own metadata, which
+            # means the file has to exist before its final, dated path can be
+            # decided. Land it in scratch space first, then move it once the
+            # date is known — same reasoning as build_staging_relative_path.
+            staging_path = storage_root / build_staging_relative_path(uuid.uuid4().hex, filename)
             _write_uploaded_file(
-                destination=destination,
+                destination=staging_path,
                 uploaded_file=form.cleaned_data["video_file"],
             )
-            duration_seconds = STUB_DURATION_SECONDS
-            title = Path(form.cleaned_filename()).stem
-            recorded_at = timezone.make_aware(
-                datetime.combine(form.cleaned_data["recorded_at"], time.min)
+            recorded_at = probe_creation_time(staging_path) or timezone.now()
+
+            relative_path = build_originals_relative_path(
+                recorded_at=recorded_at, filename=filename
             )
+            destination = storage_root / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            staging_path.replace(destination)
+            try:
+                staging_path.parent.rmdir()
+            except OSError:
+                pass
+            source_path = to_absolute_storage_path(storage_root, relative_path)
+
+            duration_seconds = STUB_DURATION_SECONDS
+            title = Path(filename).stem
 
             with transaction.atomic():
                 video = Video.objects.create(
@@ -289,10 +302,9 @@ def paginate(request, queryset, *, per_page: int = PAGE_SIZE):
 
 
 def _filtered_source_videos(*, form: SourceVideosFilterForm):
-    videos = Video.objects.filter(video_type=Video.VideoType.TYPE_A).order_by(
-        "-recorded_at",
-        "-id",
-    )
+    sort = form.cleaned_data.get("sort") or SORT_RECORDED
+    order = ("-created_at", "-id") if sort == SORT_IMPORTED else ("-recorded_at", "-id")
+    videos = Video.objects.filter(video_type=Video.VideoType.TYPE_A).order_by(*order)
     class_name = form.cleaned_data.get("class_name")
     recorded_date = form.cleaned_data.get("recorded_date")
 
@@ -308,6 +320,7 @@ def source_videos(request):
     form = SourceVideosFilterForm(request.GET)
     videos = _filtered_source_videos(form=form) if form.is_valid() else Video.objects.none()
     page, querystring = paginate(request, videos)
+    sort = (form.cleaned_data.get("sort") if form.is_valid() else None) or SORT_RECORDED
     video_rows = [
         {
             "video": video,
@@ -321,6 +334,7 @@ def source_videos(request):
         "library/source_videos.html",
         {
             "form": form,
+            "sort": sort,
             "video_rows": video_rows,
             "page": page,
             "querystring": querystring,
@@ -425,11 +439,9 @@ def video_stream(request, video_id: int):
 
 
 def _filtered_clips(*, form: ClipsBrowserFilterForm):
-    clips = Clip.objects.select_related("video").order_by(
-        "-video__recorded_at",
-        "-highlight_score",
-        "-id",
-    )
+    sort = form.cleaned_data.get("sort") or SORT_RECORDED
+    date_order = "-video__created_at" if sort == SORT_IMPORTED else "-video__recorded_at"
+    clips = Clip.objects.select_related("video").order_by(date_order, "-highlight_score", "-id")
     class_name = form.cleaned_data.get("class_name")
     recorded_date = form.cleaned_data.get("recorded_date")
     min_score = form.cleaned_data.get("min_score")
@@ -455,12 +467,14 @@ def clips_browser(request):
     form = ClipsBrowserFilterForm(request.GET)
     clips = _filtered_clips(form=form) if form.is_valid() else Clip.objects.none()
     page, querystring = paginate(request, clips)
+    sort = (form.cleaned_data.get("sort") if form.is_valid() else None) or SORT_RECORDED
 
     return render(
         request,
         "library/clips_browser.html",
         {
             "form": form,
+            "sort": sort,
             "clips": page,
             "page": page,
             "querystring": querystring,
