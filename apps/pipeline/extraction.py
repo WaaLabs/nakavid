@@ -67,6 +67,63 @@ def _expand_segment(
     )
 
 
+def _expand_segment_variable(
+    *,
+    peak_index: int,
+    energy_curve: list[dict],
+    peak_score: float,
+    plateau_score_ratio: float,
+    duration_seconds: float,
+    min_length_seconds: float,
+    max_length_seconds: float,
+) -> tuple[float, float]:
+    """Grow a peak outward while its neighbours stay near its own score.
+
+    A fixed-width expand gives every clip the same length regardless of how
+    long the good footage actually runs. This walks outward from the peak
+    window while each neighbour keeps at least plateau_score_ratio of the
+    peak's score, so a five-second spike and a forty-five-second stretch come
+    out as different lengths, then clamps into
+    [min_length_seconds, max_length_seconds].
+    """
+    threshold = peak_score * max(0.0, min(plateau_score_ratio, 1.0))
+
+    left = peak_index
+    while left - 1 >= 0 and float(energy_curve[left - 1].get("score", 0.0)) >= threshold:
+        left -= 1
+    right = peak_index
+    while (
+        right + 1 < len(energy_curve)
+        and float(energy_curve[right + 1].get("score", 0.0)) >= threshold
+    ):
+        right += 1
+
+    start_seconds, end_seconds = _normalize_segment(
+        start_seconds=float(energy_curve[left]["start"]),
+        end_seconds=float(energy_curve[right]["end"]),
+        duration_seconds=duration_seconds,
+    )
+
+    length = end_seconds - start_seconds
+    if length < min_length_seconds:
+        center = (start_seconds + end_seconds) / 2.0
+        return _expand_segment(
+            center_seconds=center,
+            duration_seconds=duration_seconds,
+            min_length_seconds=min_length_seconds,
+            target_length_seconds=min_length_seconds,
+        )
+    if length > max_length_seconds:
+        center = (start_seconds + end_seconds) / 2.0
+        half_width = max_length_seconds / 2.0
+        return _normalize_segment(
+            start_seconds=center - half_width,
+            end_seconds=center + half_width,
+            duration_seconds=duration_seconds,
+        )
+    return start_seconds, end_seconds
+
+
 def _motion_score(point: dict) -> float:
     signals = point.get("signals")
     if not isinstance(signals, dict):
@@ -136,23 +193,39 @@ def select_clip_segments(
     target_length_seconds = float(params.target_clip_length_seconds)
     min_gap_seconds = float(params.min_gap_seconds)
     snap_radius = float(params.step_seconds)
+    variable_length = params.clip_length_mode == ScoringParams.ClipLengthMode.VARIABLE
+    max_length_seconds = float(params.max_clip_length_seconds)
+    plateau_score_ratio = float(params.plateau_score_ratio)
+
+    indexed_curve = list(enumerate(energy_curve))
     candidates = sorted(
-        energy_curve,
-        key=lambda point: (float(point.get("score", 0.0)), -float(point["start"])),
+        indexed_curve,
+        key=lambda item: (float(item[1].get("score", 0.0)), -float(item[1]["start"])),
         reverse=True,
     )
     selections: list[ClipSelection] = []
 
-    for point in candidates:
+    for peak_index, point in candidates:
         if len(selections) >= int(params.peak_count):
             break
-        center = (float(point["start"]) + float(point["end"])) / 2.0
-        start, end = _expand_segment(
-            center_seconds=center,
-            duration_seconds=duration_seconds,
-            min_length_seconds=min_length_seconds,
-            target_length_seconds=target_length_seconds,
-        )
+        if variable_length:
+            start, end = _expand_segment_variable(
+                peak_index=peak_index,
+                energy_curve=energy_curve,
+                peak_score=float(point.get("score", 0.0)),
+                plateau_score_ratio=plateau_score_ratio,
+                duration_seconds=duration_seconds,
+                min_length_seconds=min_length_seconds,
+                max_length_seconds=max_length_seconds,
+            )
+        else:
+            center = (float(point["start"]) + float(point["end"])) / 2.0
+            start, end = _expand_segment(
+                center_seconds=center,
+                duration_seconds=duration_seconds,
+                min_length_seconds=min_length_seconds,
+                target_length_seconds=target_length_seconds,
+            )
         start = _snap_boundary(
             target_seconds=start,
             energy_curve=energy_curve,

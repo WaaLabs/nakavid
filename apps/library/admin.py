@@ -28,8 +28,15 @@ class VideoAdmin(admin.ModelAdmin):
 
 @admin.register(Clip)
 class ClipAdmin(admin.ModelAdmin):
-    list_display = ("id", "video", "start_seconds", "end_seconds", "highlight_score")
-    list_filter = ("highlight_score",)
+    list_display = (
+        "id",
+        "video",
+        "start_seconds",
+        "end_seconds",
+        "highlight_score",
+        "scoring_params",
+    )
+    list_filter = ("highlight_score", "scoring_params")
     filter_horizontal = ("tags",)
 
 

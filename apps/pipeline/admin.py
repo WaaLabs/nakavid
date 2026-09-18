@@ -22,6 +22,7 @@ class ScoringParamsAdmin(admin.ModelAdmin):
         "motion_weight",
         "audio_weight",
         "window_size_seconds",
+        "clip_length_mode",
         "target_clip_length_seconds",
         "peak_count",
         "updated_at",
@@ -78,13 +79,19 @@ class ScoringParamsAdmin(admin.ModelAdmin):
             {
                 "description": (
                     "How smoothed peaks become non-overlapping clips. "
-                    "Target length sets how long each clip runs; minimum gap sets "
-                    "how much silence must separate two of them, which is what stops "
-                    "a single busy stretch being chopped into several near-adjacent clips."
+                    "Fixed mode grows every clip to target length; variable mode grows "
+                    "each clip only while its neighbours stay within plateau_score_ratio "
+                    "of the peak, clamped to [min, max] — a short spike and a long good "
+                    "stretch come out different lengths. Minimum gap sets how much "
+                    "silence must separate two clips, which is what stops a single busy "
+                    "stretch being chopped into several near-adjacent clips."
                 ),
                 "fields": (
+                    "clip_length_mode",
                     "target_clip_length_seconds",
                     "min_clip_length_seconds",
+                    "max_clip_length_seconds",
+                    "plateau_score_ratio",
                     "min_gap_seconds",
                     "peak_count",
                 ),

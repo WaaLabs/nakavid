@@ -229,6 +229,158 @@ def test_min_gap_keeps_clips_from_running_together():
         assert later.start_seconds - earlier.end_seconds >= 30
 
 
+def _contiguous_curve(
+    *, scores: dict[int, float], step_seconds: int = 2, count: int = 20
+) -> list[dict]:
+    """A run of contiguous, non-overlapping windows — a synthetic energy curve
+    with no gaps, so plateau growth has real neighbours to walk across.
+    scores maps a window's start second to its score; anything unlisted is 10."""
+    return [
+        {
+            "start": float(t),
+            "end": float(t + step_seconds),
+            "score": scores.get(t, 10.0),
+            "signals": {"motion_energy": 0.5},
+        }
+        for t in range(0, count * step_seconds, step_seconds)
+    ]
+
+
+@pytest.mark.django_db
+def test_variable_mode_gives_a_short_spike_a_short_clip():
+    """A lone high window surrounded by low ones should not be padded out to
+    the same length as a long good stretch — that's the whole point of
+    plateau growth over a fixed expand."""
+    energy_curve = _contiguous_curve(scores={20: 90.0})
+    params = ScoringParams.objects.get()
+    params.clip_length_mode = ScoringParams.ClipLengthMode.VARIABLE
+    params.peak_count = 1
+    params.min_clip_length_seconds = 4
+    params.max_clip_length_seconds = 60
+    params.plateau_score_ratio = Decimal("0.60")
+
+    clips = select_clip_segments(energy_curve=energy_curve, params=params, duration_seconds=40.0)
+
+    assert len(clips) == 1
+    length = clips[0].end_seconds - clips[0].start_seconds
+    # Neighbours score 10, well under 90 * 0.6 = 54, so growth stops at the
+    # peak window itself and only the min-length floor pads it out.
+    assert length == pytest.approx(4.0, abs=1.0)
+
+
+@pytest.mark.django_db
+def test_variable_mode_gives_a_long_plateau_a_long_clip():
+    """A wide run of near-peak scores should grow the clip across all of it,
+    not stop at whatever the fixed target length would have been."""
+    plateau_scores = {t: 80.0 for t in range(10, 32, 2)} | {20: 90.0}
+    energy_curve = _contiguous_curve(scores=plateau_scores)
+    params = ScoringParams.objects.get()
+    params.clip_length_mode = ScoringParams.ClipLengthMode.VARIABLE
+    params.peak_count = 1
+    params.min_clip_length_seconds = 4
+    params.max_clip_length_seconds = 60
+    params.plateau_score_ratio = Decimal("0.60")
+
+    clips = select_clip_segments(energy_curve=energy_curve, params=params, duration_seconds=40.0)
+
+    assert len(clips) == 1
+    length = clips[0].end_seconds - clips[0].start_seconds
+    # Plateau runs from t=10 to t=32 (score >= 90*0.6=54 throughout), so the
+    # clip should span roughly that whole run rather than a fixed width.
+    assert length > 15.0
+
+
+@pytest.mark.django_db
+def test_variable_mode_clamps_to_max_clip_length():
+    plateau_scores = {t: 80.0 for t in range(0, 40, 2)} | {20: 90.0}
+    energy_curve = _contiguous_curve(scores=plateau_scores)
+    params = ScoringParams.objects.get()
+    params.clip_length_mode = ScoringParams.ClipLengthMode.VARIABLE
+    params.peak_count = 1
+    params.min_clip_length_seconds = 4
+    params.max_clip_length_seconds = 10
+    params.plateau_score_ratio = Decimal("0.60")
+
+    clips = select_clip_segments(energy_curve=energy_curve, params=params, duration_seconds=80.0)
+
+    assert len(clips) == 1
+    length = clips[0].end_seconds - clips[0].start_seconds
+    assert length <= 10.0 + 1e-6
+
+
+@pytest.mark.django_db
+def test_fixed_and_variable_extraction_coexist_on_the_same_video(storage_root, user):
+    """The whole point of the eval flow: two ScoringParams rows produce two
+    independent sets of clips on the same video, and neither run's clips
+    wipe the other's."""
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    video.energy_curve = _contiguous_curve(scores={20: 90.0})
+    video.save(update_fields=["energy_curve"])
+
+    fixed_params = ScoringParams.objects.get()
+    fixed_params.target_clip_length_seconds = 6
+    fixed_params.min_clip_length_seconds = 4
+    fixed_params.peak_count = 1
+    fixed_params.save()
+
+    variable_params = ScoringParams.objects.create(
+        clip_length_mode=ScoringParams.ClipLengthMode.VARIABLE,
+        target_clip_length_seconds=6,
+        min_clip_length_seconds=4,
+        max_clip_length_seconds=60,
+        plateau_score_ratio=Decimal("0.60"),
+        peak_count=1,
+    )
+
+    with (
+        patch("apps.pipeline.handlers.run_ffmpeg_trim"),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
+        handle_clip_extraction(
+            Job.objects.create(
+                video=video,
+                job_type=Job.JobType.CLIP_EXTRACTION,
+                status=Job.Status.PROCESSING,
+                scoring_params=fixed_params,
+            )
+        )
+        handle_clip_extraction(
+            Job.objects.create(
+                video=video,
+                job_type=Job.JobType.CLIP_EXTRACTION,
+                status=Job.Status.PROCESSING,
+                scoring_params=variable_params,
+            )
+        )
+
+    fixed_clips = list(Clip.objects.filter(video=video, scoring_params=fixed_params))
+    variable_clips = list(Clip.objects.filter(video=video, scoring_params=variable_params))
+    assert len(fixed_clips) == 1
+    assert len(variable_clips) == 1
+    # Different storage paths — the variant suffix is what stops the second
+    # run's ffmpeg output from overwriting the first's on disk.
+    assert fixed_clips[0].storage_path != variable_clips[0].storage_path
+    assert list(variable_clips[0].tags.values_list("slug", flat=True)) == ["eval-variable-length"]
+    assert list(fixed_clips[0].tags.values_list("slug", flat=True)) == []
+
+    # Re-running the fixed job replaces only its own clip, not the eval one.
+    with (
+        patch("apps.pipeline.handlers.run_ffmpeg_trim"),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
+        handle_clip_extraction(
+            Job.objects.create(
+                video=video,
+                job_type=Job.JobType.CLIP_EXTRACTION,
+                status=Job.Status.PROCESSING,
+                scoring_params=fixed_params,
+            )
+        )
+
+    assert Clip.objects.filter(video=video, scoring_params=variable_params).count() == 1
+    assert Clip.objects.filter(video=video, scoring_params=fixed_params).count() == 1
+
+
 @pytest.mark.django_db
 def test_extraction_without_a_curve_errors_rather_than_silently_doing_nothing(storage_root, user):
     """A missing curve must surface, not report done having rebuilt nothing.

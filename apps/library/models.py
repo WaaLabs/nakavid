@@ -102,6 +102,17 @@ class Clip(models.Model):
     end_seconds = models.DecimalField(max_digits=8, decimal_places=3)
     highlight_score = models.PositiveSmallIntegerField(default=0)
     energy_curve = models.JSONField(default=list)
+    # Which ScoringParams row produced this clip. Null on clips created before
+    # this field existed. Lets two extraction runs (e.g. fixed vs. variable
+    # clip length) coexist on the same video without one wiping the other's
+    # clips — see handle_clip_extraction's deletion scoping.
+    scoring_params = models.ForeignKey(
+        "pipeline.ScoringParams",
+        on_delete=models.PROTECT,
+        related_name="clips",
+        null=True,
+        blank=True,
+    )
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="clips")
     tags = models.ManyToManyField(Tag, related_name="clips", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
