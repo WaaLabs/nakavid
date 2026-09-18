@@ -5,9 +5,10 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 
 from apps.library.immich_ingest import resolve_default_user, run_immich_ingest
-from apps.library.models import Clip, Combine, Video
+from apps.library.models import Clip, Combine, Tag, Video
 from apps.library.storage_paths import (
     build_combine_relative_path,
     build_contact_sheet_relative_path,
@@ -30,7 +31,7 @@ from apps.pipeline.extraction import (
     run_ffmpeg_trim,
     select_clip_segments,
 )
-from apps.pipeline.models import Job
+from apps.pipeline.models import Job, ScoringParams
 from apps.pipeline.probe import needs_web_transcode, run_ffprobe
 from apps.pipeline.scoring import run_segment_scoring, scoring_params_from_job
 from apps.pipeline.transcode import run_ffmpeg_web_transcode
@@ -220,6 +221,36 @@ def handle_combine_export(job: Job) -> None:
         raise
 
 
+EVAL_VARIABLE_LENGTH_TAG_SLUG = "eval-variable-length"
+
+
+def _extraction_variant(params: ScoringParams) -> str:
+    """A filename/path suffix for a non-default extraction run.
+
+    Empty for the normal fixed-length path, so its output paths are
+    unchanged. A variable-length (eval) run gets one keyed to its exact
+    ScoringParams row, so two eval runs with different tuning never collide
+    with each other or with the fixed run on disk.
+    """
+    if params.clip_length_mode == ScoringParams.ClipLengthMode.FIXED:
+        return ""
+    return f"eval-{params.pk}"
+
+
+def _clips_to_replace(*, video: Video, params: ScoringParams):
+    """Clips this extraction run owns and should rebuild before re-creating.
+
+    A fixed-mode run also sweeps up clips with no recorded provenance — the
+    normal case for anything extracted before Clip.scoring_params existed.
+    A variable-mode (eval) run only ever touches clips from its own exact
+    params row, so a fixed run and a variable run can coexist on the same
+    video for side-by-side comparison instead of one wiping the other out.
+    """
+    if params.clip_length_mode == ScoringParams.ClipLengthMode.FIXED:
+        return video.clips.filter(Q(scoring_params=params) | Q(scoring_params__isnull=True))
+    return video.clips.filter(scoring_params=params)
+
+
 def handle_clip_extraction(job: Job) -> None:
     video = job.video
     if video.video_type != Video.VideoType.TYPE_A:
@@ -242,14 +273,24 @@ def handle_clip_extraction(job: Job) -> None:
     source_file_path = _playback_file_path(video)
     storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
     video_tag_ids = list(video.tags.values_list("id", flat=True))
+    variant = _extraction_variant(params)
+    eval_tag_id: int | None = None
+    if params.clip_length_mode == ScoringParams.ClipLengthMode.VARIABLE:
+        eval_tag, _created = Tag.objects.get_or_create(
+            slug=EVAL_VARIABLE_LENGTH_TAG_SLUG,
+            defaults={"label": "Eval: Variable Length"},
+        )
+        eval_tag_id = eval_tag.pk
+    tag_ids = video_tag_ids + ([eval_tag_id] if eval_tag_id else [])
 
     with transaction.atomic():
-        video.clips.all().delete()
+        _clips_to_replace(video=video, params=params).delete()
         for clip_index, selection in enumerate(selections, start=1):
             relative_video_path, relative_thumbnail_path = build_highlight_relative_paths(
                 recorded_at=video.recorded_at,
                 source_stem=source_stem,
                 clip_index=clip_index,
+                variant=variant,
             )
             absolute_video_path = to_absolute_storage_path(storage_root, relative_video_path)
             absolute_thumbnail_path = to_absolute_storage_path(
@@ -278,10 +319,11 @@ def handle_clip_extraction(job: Job) -> None:
                 end_seconds=Decimal(f"{selection.end_seconds:.3f}"),
                 highlight_score=int(round(selection.score)),
                 energy_curve=selection.energy_curve,
+                scoring_params=params,
                 created_by=video.created_by,
             )
-            if video_tag_ids:
-                clip.tags.set(video_tag_ids)
+            if tag_ids:
+                clip.tags.set(tag_ids)
 
 
 def _score_short_recording(*, video: Video, params) -> None:

@@ -59,12 +59,19 @@ def build_highlight_relative_paths(
     recorded_at: date | datetime,
     source_stem: str,
     clip_index: int,
+    variant: str = "",
 ) -> tuple[str, str]:
     """highlights/{year}/{month}/{day}/{stem}__clip_{NNN}.{mp4,jpg} — see
-    build_originals_relative_path for why class/theme aren't in the path."""
+    build_originals_relative_path for why class/theme aren't in the path.
+
+    variant distinguishes a non-default extraction run (e.g. a variable-length
+    eval) from the normal one, so the two can coexist on disk instead of one
+    silently overwriting the other's files at the same clip_index."""
     if isinstance(recorded_at, datetime):
         recorded_at = recorded_at.date()
     clip_name = f"{source_stem}__clip_{clip_index:03d}"
+    if variant:
+        clip_name = f"{clip_name}__{variant}"
     base = (
         PurePosixPath(HIGHLIGHTS_PREFIX)
         / str(recorded_at.year)

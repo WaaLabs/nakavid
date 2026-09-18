@@ -4,6 +4,10 @@ from apps.library.models import Combine, Video
 
 
 class ScoringParams(models.Model):
+    class ClipLengthMode(models.TextChoices):
+        FIXED = "fixed", "Fixed length"
+        VARIABLE = "variable", "Variable length"
+
     face_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
     smile_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
     motion_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
@@ -39,6 +43,19 @@ class ScoringParams(models.Model):
     # How long an extracted clip should be. Was a hard-coded +/-3s around the
     # peak, which pinned every clip to ~6s regardless of settings.
     target_clip_length_seconds = models.PositiveSmallIntegerField(default=30)
+    # fixed: every clip grows to target_clip_length_seconds, as above. variable:
+    # a clip is as long as the score stays near its peak (see
+    # plateau_score_ratio), clamped to [min_clip_length_seconds,
+    # max_clip_length_seconds] — a great 5s moment and a great 45s stretch no
+    # longer come out the same length.
+    clip_length_mode = models.CharField(
+        max_length=16, choices=ClipLengthMode.choices, default=ClipLengthMode.FIXED
+    )
+    max_clip_length_seconds = models.PositiveSmallIntegerField(default=60)
+    # variable mode only. Fraction of a peak's own score a neighbouring window
+    # must keep to stay inside its plateau. Lower grows clips longer; higher
+    # stops sooner.
+    plateau_score_ratio = models.DecimalField(max_digits=3, decimal_places=2, default=0.60)
     # Silence between clips. At 2s, two peaks ~10s apart both survived and the
     # output read as one long run chopped up.
     min_gap_seconds = models.PositiveSmallIntegerField(default=15)
