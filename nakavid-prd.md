@@ -85,7 +85,7 @@ Stack is authoritative in `AGENTS.md`. In one line for this doc: **Django** (CMS
 
 ## 9. Privacy & safety
 
-Footage stays on the LAN — full videos, clips, and frames alike; no third-party cloud path exists, enforced at the network/proxy layer, not just in code. Auth required on every video/clip route. Per-video privacy flag designed into the schema for later consent tracking. The single future external exception (opt-in Claude Vision thumbnail-still tagging) is out of scope until explicit founder sign-off. (Full rule in AGENTS.md.)
+Footage stays on the LAN — full videos, clips, and frames alike; no third-party cloud path exists, enforced at the network/proxy layer, not just in code. Auth required on every video/clip route. Per-video privacy flag for later consent tracking is deferred — not yet in the schema, single-user v1 has no need for it, add when a real trigger (a parent objection, or a secondary user like Kasumi/staff) makes it necessary. The single future external exception (opt-in Claude Vision thumbnail-still tagging) is out of scope until explicit founder sign-off. (Full rule in AGENTS.md.)
 
 ## 10. Build phases
 
@@ -99,12 +99,14 @@ Footage stays on the LAN — full videos, clips, and frames alike; no third-part
 
 *(The montage engine that used to sit here is Nebla's product — gated behind its own Planner-quality validation. Not in NakaVid's phases.)*
 
-## 11. Open questions
+## 11. Open questions (resolved)
 
-| # | Question | Notes |
+All five questions raised during planning are now settled by what shipped in Phases 1–3:
+
+| # | Question | Resolution |
 |---|---|---|
-| 1 | Face/smile detection: OpenCV Haar cascades (CPU, no torch) for v1, or YOLO/torch from the start? | Haar keeps the flake lean and CPU-only; YOLO is better but pulls torch. Depends on whether medina has a GPU. |
-| 2 | Job queue: Postgres SKIP LOCKED + management-command worker, or Django-Q/Celery? | Postgres-queue is lowest-infra for one box; revisit if concurrency grows. |
-| 3 | Combine preview: client-side stitch of proxies, or a fast worker render? | Affects how tight the combine loop feels. |
-| 4 | Chunked/resumable upload library for large Type A files? | Needs to survive a dropped LAN connection mid-upload. |
-| 5 | Per-video privacy flag → when does consent tracking actually land? | Schema carries it now; enforcement is a later phase. |
+| 1 | Face/smile detection: OpenCV Haar cascades (CPU, no torch) for v1, or YOLO/torch from the start? | Haar cascades, CPU-only (`apps/pipeline/scoring.py`). `opencv-python-headless<5` pinned specifically to keep the Haar API. No torch/YOLO dependency. |
+| 2 | Job queue: Postgres SKIP LOCKED + management-command worker, or Django-Q/Celery? | Postgres `SELECT ... FOR UPDATE SKIP LOCKED` (`apps/pipeline/job_queue.py`). No Celery/Django-Q. |
+| 3 | Combine preview: client-side stitch of proxies, or a fast worker render? | Both: client-side sequential playback for the preview UX (`drag-combine.tsx`), real ffmpeg concat render on the worker for the exported file (`apps/pipeline/combine_export.py`). |
+| 4 | Chunked/resumable upload library for large Type A files? | Hand-rolled, not a library — chunks to `.staging/{token}/`, reassembled, probed, moved (`apps/library/resumable_upload.py`). |
+| 5 | Per-video privacy flag → when does consent tracking actually land? | Deferred — not built into the schema. Single-user v1 has no need for it; add if a real trigger (a parent objection, or a secondary user like Kasumi/staff) makes it necessary. See §9. |
