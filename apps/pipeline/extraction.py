@@ -196,6 +196,7 @@ def select_clip_segments(
     variable_length = params.clip_length_mode == ScoringParams.ClipLengthMode.VARIABLE
     max_length_seconds = float(params.max_clip_length_seconds)
     plateau_score_ratio = float(params.plateau_score_ratio)
+    min_peak_score = float(params.min_peak_score)
 
     indexed_curve = list(enumerate(energy_curve))
     candidates = sorted(
@@ -207,6 +208,11 @@ def select_clip_segments(
 
     for peak_index, point in candidates:
         if len(selections) >= int(params.peak_count):
+            break
+        # Candidates are ranked highest-score-first, so once one misses the
+        # floor every remaining candidate does too — peak_count becomes a
+        # ceiling, not a target to pad out with weak material.
+        if float(point.get("score", 0.0)) < min_peak_score:
             break
         if variable_length:
             start, end = _expand_segment_variable(
