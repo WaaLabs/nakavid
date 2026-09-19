@@ -60,6 +60,12 @@ class ScoringParams(models.Model):
     # output read as one long run chopped up.
     min_gap_seconds = models.PositiveSmallIntegerField(default=15)
     peak_count = models.PositiveSmallIntegerField(default=8)
+    # A peak below this score is not selected at all, even if peak_count isn't
+    # met yet — so a quiet recording yields fewer clips instead of padding out
+    # to peak_count with whatever's left. 0 keeps the old behaviour (every
+    # candidate is eligible). Candidates are ranked highest-score-first, so
+    # once one falls below the floor every remaining candidate does too.
+    min_peak_score = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

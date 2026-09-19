@@ -94,6 +94,7 @@ class ScoringParamsAdmin(admin.ModelAdmin):
                     "plateau_score_ratio",
                     "min_gap_seconds",
                     "peak_count",
+                    "min_peak_score",
                 ),
             },
         ),

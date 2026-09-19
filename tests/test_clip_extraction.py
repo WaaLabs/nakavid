@@ -229,6 +229,51 @@ def test_min_gap_keeps_clips_from_running_together():
         assert later.start_seconds - earlier.end_seconds >= 30
 
 
+@pytest.mark.django_db
+def test_min_peak_score_stops_filling_peak_count_with_weak_material():
+    """peak_count is a ceiling, not a target — a quiet stretch should not get
+    padded out with a clip nobody would call a highlight."""
+    params = ScoringParams.objects.get()
+    params.peak_count = 8
+    params.min_gap_seconds = 4
+    params.min_clip_length_seconds = 4
+    params.target_clip_length_seconds = 6
+    params.min_peak_score = 60
+
+    energy_curve = [
+        {"start": 0.0, "end": 4.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
+        {"start": 20.0, "end": 24.0, "score": 80.0, "signals": {"motion_energy": 0.2}},
+        # Below the floor — should be excluded even though peak_count allows more.
+        {"start": 40.0, "end": 44.0, "score": 44.0, "signals": {"motion_energy": 0.2}},
+        {"start": 60.0, "end": 64.0, "score": 30.0, "signals": {"motion_energy": 0.2}},
+    ]
+
+    clips = select_clip_segments(energy_curve=energy_curve, params=params, duration_seconds=80.0)
+
+    assert len(clips) == 2
+    assert all(clip.score >= 60.0 for clip in clips)
+
+
+@pytest.mark.django_db
+def test_min_peak_score_zero_keeps_old_behaviour():
+    """Default 0 means no floor — every candidate is still eligible."""
+    params = ScoringParams.objects.get()
+    params.peak_count = 8
+    params.min_gap_seconds = 4
+    params.min_clip_length_seconds = 4
+    params.target_clip_length_seconds = 6
+    assert params.min_peak_score == 0
+
+    energy_curve = [
+        {"start": 0.0, "end": 4.0, "score": 90.0, "signals": {"motion_energy": 0.2}},
+        {"start": 40.0, "end": 44.0, "score": 5.0, "signals": {"motion_energy": 0.2}},
+    ]
+
+    clips = select_clip_segments(energy_curve=energy_curve, params=params, duration_seconds=80.0)
+
+    assert len(clips) == 2
+
+
 def _contiguous_curve(
     *, scores: dict[int, float], step_seconds: int = 2, count: int = 20
 ) -> list[dict]:
