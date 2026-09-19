@@ -359,13 +359,40 @@ def _lesson_view_clip_payload(clips: list[Clip]) -> list[dict[str, object]]:
     return payload
 
 
+def _clip_peak_signals(clip: Clip) -> dict[str, str] | None:
+    """The signals behind a clip's headline score.
+
+    The peak is the highest-scoring window in the clip's own curve slice —
+    the same window select_clip_segments expanded outward from, so its
+    signals are what actually drove the score, not the average across the
+    whole clip.
+    """
+    if not clip.energy_curve:
+        return None
+    peak = max(clip.energy_curve, key=lambda point: float(point.get("score", 0.0)))
+    signals = peak.get("signals") or {}
+    face_count = signals.get("face_count")
+    smile_ratio = signals.get("smile_ratio")
+    motion_energy = signals.get("motion_energy")
+    audio_rms = signals.get("audio_rms")
+    return {
+        "at_label": format_timecode_seconds(int(peak.get("start", 0))),
+        "faces": f"{face_count:.1f}" if face_count is not None else "—",
+        "smiling": f"{smile_ratio * 100:.0f}%" if smile_ratio is not None else "—",
+        "motion": f"{motion_energy:.2f}" if motion_energy is not None else "—",
+        "audio": f"{audio_rms:.3f}" if audio_rms is not None else "—",
+    }
+
+
 @login_required
 def lesson_view(request, video_id: int):
     video = get_object_or_404(
         Video.objects.filter(video_type=Video.VideoType.TYPE_A),
         pk=video_id,
     )
-    clips = list(video.clips.order_by("start_seconds", "id"))
+    clips = list(video.clips.select_related("scoring_params").order_by("start_seconds", "id"))
+    for clip in clips:
+        clip.peak_signals = _clip_peak_signals(clip)
     clips_json = json.dumps(
         _lesson_view_clip_payload(clips),
         separators=(",", ":"),

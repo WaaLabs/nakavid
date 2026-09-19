@@ -57,6 +57,21 @@
           <span class="card__meta">{{ clip.duration_label }}</span>
           <span class="badge badge--score">{{ clip.highlight_score }}</span>
         </div>
+        {% if clip.peak_signals %}
+        <details class="card__details">
+          <summary>Why this score</summary>
+          <dl class="card__signals">
+            <div><dt>Peak at</dt><dd>{{ clip.peak_signals.at_label }}</dd></div>
+            <div><dt>Faces</dt><dd>{{ clip.peak_signals.faces }}</dd></div>
+            <div><dt>Smiling</dt><dd>{{ clip.peak_signals.smiling }}</dd></div>
+            <div><dt>Motion</dt><dd>{{ clip.peak_signals.motion }}</dd></div>
+            <div><dt>Audio</dt><dd>{{ clip.peak_signals.audio }}</dd></div>
+            {% if clip.scoring_params %}
+            <div><dt>Params</dt><dd>#{{ clip.scoring_params_id }} ({{ clip.scoring_params.get_clip_length_mode_display }})</dd></div>
+            {% endif %}
+          </dl>
+        </details>
+        {% endif %}
       </div>
     </article>
     {% endfor %}

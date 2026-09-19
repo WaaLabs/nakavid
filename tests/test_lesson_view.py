@@ -155,6 +155,75 @@ def test_source_videos_links_to_lesson_view(authenticated_client, type_a_with_cl
 
 
 @pytest.mark.django_db
+def test_clip_card_shows_the_signals_behind_its_score(
+    authenticated_client, coach_user, storage_root
+):
+    from apps.pipeline.models import ScoringParams
+
+    client, _user = authenticated_client
+    recorded_at = timezone.make_aware(datetime(2026, 7, 1, 12, 0))
+    video = Video.objects.create(
+        title="signals_lesson",
+        source_path=to_absolute_storage_path(
+            storage_root, "originals/2026/07/20260701_a_animals/signals_lesson.mp4"
+        ),
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        recorded_at=recorded_at,
+        duration_seconds=600,
+        created_by=coach_user,
+    )
+    params = ScoringParams.objects.get()
+    Clip.objects.create(
+        video=video,
+        storage_path=to_absolute_storage_path(
+            storage_root, "highlights/2026/07/20260701_a_animals/signals_lesson__clip_001.mp4"
+        ),
+        start_seconds=Decimal("30.000"),
+        end_seconds=Decimal("60.000"),
+        highlight_score=77,
+        scoring_params=params,
+        created_by=coach_user,
+        energy_curve=[
+            {
+                "start": 30.0,
+                "end": 34.0,
+                "score": 60.0,
+                "signals": {
+                    "face_count": 3.0,
+                    "smile_ratio": 0.25,
+                    "motion_energy": 0.1,
+                    "audio_rms": 0.05,
+                },
+            },
+            {
+                "start": 44.0,
+                "end": 48.0,
+                "score": 77.0,
+                "signals": {
+                    "face_count": 4.5,
+                    "smile_ratio": 0.5,
+                    "motion_energy": 0.2,
+                    "audio_rms": 0.08,
+                },
+            },
+        ],
+    )
+
+    response = client.get(reverse("lesson-view", args=[video.id]))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Why this score" in content
+    # Signals from the peak window (score 77, at 44s) — not the weaker one.
+    assert "4.5" in content
+    assert "50%" in content
+    assert "0.20" in content
+    assert "0.080" in content
+    assert f"#{params.pk}" in content
+
+
+@pytest.mark.django_db
 def test_clip_cards_are_anchor_targets_for_the_timeline(authenticated_client, type_a_with_clips):
     """Timeline bars link to #clip-<id>, so the cards must carry those ids."""
     client, _user = authenticated_client
