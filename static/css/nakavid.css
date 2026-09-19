@@ -496,6 +496,55 @@ tbody tr:last-child td {
   margin-top: 0.15rem;
 }
 
+.card__details {
+  margin-top: 0.15rem;
+  font-size: 0.8125rem;
+  color: var(--nv-text-muted);
+}
+
+.card__details summary {
+  cursor: pointer;
+  color: var(--nv-accent);
+  list-style: none;
+}
+
+.card__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.card__details summary::before {
+  content: "▸ ";
+}
+
+.card__details[open] summary::before {
+  content: "▾ ";
+}
+
+.card__signals {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.2rem 0.75rem;
+  margin: 0.4rem 0 0;
+}
+
+.card__signals div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  border-bottom: 1px dashed var(--nv-border);
+  padding-bottom: 0.1rem;
+}
+
+.card__signals dt {
+  color: var(--nv-text-faint);
+}
+
+.card__signals dd {
+  margin: 0;
+  color: var(--nv-text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- single-video player ---------- */
 
 .player-wrap {
