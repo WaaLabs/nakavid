@@ -210,6 +210,33 @@ def test_gather_still_candidates_samples_once_per_step():
 
 
 @pytest.mark.django_db
+def test_gather_still_candidates_uses_dnn_for_face_detection():
+    """Stills need precision on one frame, not recall across many — the DNN
+    detector is a clear win here even though clip scoring reverted to Haar
+    for the opposite reason (see extract_window_signals)."""
+    from apps.pipeline.scoring import DEFAULT_DETECTION
+
+    params = ScoringParams.objects.get()
+    fake_sampler = _FakeSampler({})
+
+    with (
+        patch("apps.pipeline.stills.SequentialFrameSampler", return_value=fake_sampler),
+        patch("apps.pipeline.stills.dnn_face_detector") as dnn_mock,
+        patch("apps.pipeline.stills.haar_cascade") as haar_mock,
+    ):
+        gather_still_candidates(
+            video_path=Path("/nowhere.mp4"),
+            duration_seconds=4.0,
+            params=params,
+        )
+
+    dnn_mock.assert_called_once_with(
+        confidence_threshold=DEFAULT_DETECTION.face_detection_confidence
+    )
+    haar_mock.assert_called_once_with("haarcascade_smile.xml")
+
+
+@pytest.mark.django_db
 def test_select_stills_respects_count_and_min_gap():
     params = ScoringParams.objects.get()
     params.still_count = 2

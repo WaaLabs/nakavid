@@ -398,6 +398,34 @@ def test_frames_per_window_is_a_parameter_not_a_constant():
     assert sample.call_args.kwargs["max_frames"] == 5
 
 
+def test_extract_window_signals_uses_haar_for_face_detection_not_dnn():
+    """Clip scoring needs recall across a whole wide shot; the DNN detector's
+    300x300 input loses small/distant faces — measured on real footage:
+    average face_count dropped from routinely several per window to 0.63,
+    with 39% of windows finding zero faces in a classroom visibly full of
+    kids throughout. Stills use the DNN detector instead (see
+    score_still_frame), where precision on one frame matters more than
+    recall across many — this only guards clip scoring's side of the split.
+    """
+    from apps.pipeline.scoring import extract_window_signals
+
+    with (
+        patch("apps.pipeline.scoring._sample_frames", return_value=[]),
+        patch("apps.pipeline.scoring.haar_cascade") as haar_cascade_mock,
+        patch("apps.pipeline.scoring.dnn_face_detector") as dnn_face_detector_mock,
+    ):
+        haar_cascade_mock.return_value.detectMultiScale.return_value = []
+        extract_window_signals(
+            video_path=Path("/nowhere.mp4"),
+            start_seconds=0.0,
+            end_seconds=4.0,
+            audio_track=_silent_track(),
+        )
+
+    dnn_face_detector_mock.assert_not_called()
+    haar_cascade_mock.assert_any_call("haarcascade_frontalface_default.xml")
+
+
 def _silent_track():
     import numpy as np
 

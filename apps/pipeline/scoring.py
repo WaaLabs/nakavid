@@ -127,24 +127,24 @@ def _dnn_face_net() -> cv2.dnn.Net:
 
 class DnnFaceDetector:
     """OpenCV's bundled SSD face detector, behind Haar's detectMultiScale
-    interface so extract_window_signals and score_still_frame don't need to
-    change at all — only what constructs "face_cascade" does.
+    interface so score_still_frame's call site barely differs from Haar's
+    — only what constructs "face_cascade" does.
 
-    Haar's frontal-face cascade both false-positives on non-face texture
-    (hair, fabric folds, a shoulder) and misses anything but near-frontal
-    faces — confirmed on real footage: a frame of someone's back registered
-    a confident "face" and "smile" that weren't there, while a frame with
-    two real, clearly smiling but slightly angled kids' faces found nothing
-    at all. This SSD model is far more robust to both failure modes.
+    Used for stills only, not clip scoring — see extract_window_signals'
+    comment for why. Haar's frontal-face cascade false-positives on
+    non-face texture (hair, fabric folds, a shoulder) — confirmed on real
+    footage: a frame of someone's back registered a confident "face" and
+    "smile" that weren't there. This SSD model is far more robust to that
+    on the single, reasonably-composed frames stills are hunting for.
 
     Frames arrive here already converted to grayscale (SequentialFrameSampler
     does this for every consumer, Haar included) and get re-expanded to BGR
     before the forward pass — the model wants three channels, but this means
-    it never sees real colour, which is likely why it still doesn't recover
-    every angled face. Feeding it genuine colour frames is a real next step
-    if detection quality still isn't sufficient after this change, but a
-    bigger one: SequentialFrameSampler decoding colour affects every caller,
-    not just face detection.
+    it never sees real colour, which is the likely reason it still misses
+    some angled or small faces. Feeding it genuine colour frames is a real
+    next step if detection quality still isn't sufficient, but a bigger
+    one: SequentialFrameSampler decoding colour affects every caller, not
+    just face detection.
     """
 
     def __init__(self, *, net: cv2.dnn.Net, confidence_threshold: float) -> None:
@@ -269,10 +269,13 @@ def _sample_frames(
 class DetectionSettings:
     """Detection thresholds, lifted out of the code so they can be tuned.
 
-    face_scale_factor/face_min_neighbors are Haar-specific and unused now
-    that face detection is the DNN detector (see DnnFaceDetector) — kept
-    rather than removed in case the swap needs reverting; smile detection
-    is still Haar and still uses its own pair below.
+    Face detection is split by use case, not a blanket swap: clip scoring
+    (extract_window_signals) uses Haar — face_scale_factor/face_min_neighbors
+    — because it needs recall across a whole wide shot; stills
+    (score_still_frame) use the DNN detector — face_detection_confidence —
+    because it needs precision on one frame. See extract_window_signals'
+    comment for the measurement that drove the split. Smile detection is
+    Haar either way, with its own pair below.
     """
 
     face_scale_factor: float
@@ -439,7 +442,17 @@ def extract_window_signals(
     if settings.max_width:
         frames = [downscale_to_width(frame, settings.max_width) for frame in frames]
 
-    face_cascade = dnn_face_detector(confidence_threshold=settings.face_detection_confidence)
+    # Clip scoring counts faces across a whole wide shot (a full classroom,
+    # often several kids at a distance), which needs recall more than
+    # precision — the DNN detector's 300x300 input loses small/distant
+    # faces (measured: average face_count dropped from routinely several
+    # per window to 0.63, with 39% of windows finding zero faces in a
+    # classroom visibly full of kids throughout). Stills hunt for one clear,
+    # well-composed frame instead, where precision matters more and DNN
+    # is a clear win — see score_still_frame. Haar stays here until a
+    # detector handles both well (colour input instead of grayscale is the
+    # likely fix — see DnnFaceDetector's docstring).
+    face_cascade = haar_cascade("haarcascade_frontalface_default.xml")
     smile_cascade = haar_cascade("haarcascade_smile.xml")
 
     face_total = 0
