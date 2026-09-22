@@ -56,9 +56,11 @@ class ScoringParamsAdmin(admin.ModelAdmin):
                     "detection — 0 keeps full resolution. Detection is roughly "
                     "half of scoring time and scales with pixel count, so lowering "
                     "this is the main speed lever, at the cost of changing counts. "
-                    "The Haar thresholds below decide how readily a face or a "
-                    "smile is accepted: lower scale factor and fewer required "
-                    "neighbours mean more detections and more false positives."
+                    "Face detection is the DNN detector — face_detection_confidence "
+                    "is its only real knob; face_scale_factor/face_min_neighbors are "
+                    "dormant Haar leftovers. Smile detection is still Haar: lower "
+                    "scale factor and fewer required neighbours mean more "
+                    "detections and more false positives."
                 ),
                 "fields": (
                     "window_size_seconds",
@@ -66,6 +68,7 @@ class ScoringParamsAdmin(admin.ModelAdmin):
                     "smoothing_window_count",
                     "frames_per_window",
                     "detect_max_width_pixels",
+                    "face_detection_confidence",
                     "face_scale_factor",
                     "face_min_neighbors",
                     "smile_scale_factor",

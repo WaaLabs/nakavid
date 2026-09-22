@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import cv2
@@ -8,6 +9,10 @@ import librosa
 import numpy as np
 
 from apps.pipeline.models import Job, ScoringParams
+
+_DNN_MODEL_DIR = Path(__file__).parent / "dnn_models"
+_DNN_PROTOTXT = _DNN_MODEL_DIR / "deploy.prototxt"
+_DNN_WEIGHTS = _DNN_MODEL_DIR / "res10_300x300_ssd_iter_140000_fp16.caffemodel"
 
 
 class ScoringError(Exception):
@@ -110,6 +115,71 @@ def haar_cascade(name: str) -> cv2.CascadeClassifier:
     return classifier
 
 
+@lru_cache(maxsize=1)
+def _dnn_face_net() -> cv2.dnn.Net:
+    """Loaded once per process — deserializing the weights is the expensive
+    part, not running them, and face detection wants a fresh detector object
+    per call the way Haar cascades are cheaply reloaded per window."""
+    if not _DNN_WEIGHTS.exists():
+        raise ScoringError(f"DNN face detector weights missing: {_DNN_WEIGHTS}")
+    return cv2.dnn.readNetFromCaffe(str(_DNN_PROTOTXT), str(_DNN_WEIGHTS))
+
+
+class DnnFaceDetector:
+    """OpenCV's bundled SSD face detector, behind Haar's detectMultiScale
+    interface so extract_window_signals and score_still_frame don't need to
+    change at all — only what constructs "face_cascade" does.
+
+    Haar's frontal-face cascade both false-positives on non-face texture
+    (hair, fabric folds, a shoulder) and misses anything but near-frontal
+    faces — confirmed on real footage: a frame of someone's back registered
+    a confident "face" and "smile" that weren't there, while a frame with
+    two real, clearly smiling but slightly angled kids' faces found nothing
+    at all. This SSD model is far more robust to both failure modes.
+
+    Frames arrive here already converted to grayscale (SequentialFrameSampler
+    does this for every consumer, Haar included) and get re-expanded to BGR
+    before the forward pass — the model wants three channels, but this means
+    it never sees real colour, which is likely why it still doesn't recover
+    every angled face. Feeding it genuine colour frames is a real next step
+    if detection quality still isn't sufficient after this change, but a
+    bigger one: SequentialFrameSampler decoding colour affects every caller,
+    not just face detection.
+    """
+
+    def __init__(self, *, net: cv2.dnn.Net, confidence_threshold: float) -> None:
+        self._net = net
+        self._confidence_threshold = confidence_threshold
+
+    def detectMultiScale(
+        self, frame: np.ndarray, **_ignored: object
+    ) -> list[tuple[int, int, int, int]]:
+        bgr = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR) if frame.ndim == 2 else frame
+        height, width = bgr.shape[:2]
+        blob = cv2.dnn.blobFromImage(
+            cv2.resize(bgr, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
+        )
+        self._net.setInput(blob)
+        detections = self._net.forward()
+
+        boxes: list[tuple[int, int, int, int]] = []
+        for i in range(detections.shape[2]):
+            confidence = float(detections[0, 0, i, 2])
+            if confidence < self._confidence_threshold:
+                continue
+            x1, y1, x2, y2 = (detections[0, 0, i, 3:7] * [width, height, width, height]).astype(int)
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(width, x2), min(height, y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            boxes.append((x1, y1, x2 - x1, y2 - y1))
+        return boxes
+
+
+def dnn_face_detector(*, confidence_threshold: float) -> DnnFaceDetector:
+    return DnnFaceDetector(net=_dnn_face_net(), confidence_threshold=confidence_threshold)
+
+
 class SequentialFrameSampler:
     """Walks a video forward once, handing out the frames each window needs.
 
@@ -197,10 +267,17 @@ def _sample_frames(
 
 @dataclass(frozen=True)
 class DetectionSettings:
-    """Haar thresholds, lifted out of the code so they can be tuned."""
+    """Detection thresholds, lifted out of the code so they can be tuned.
+
+    face_scale_factor/face_min_neighbors are Haar-specific and unused now
+    that face detection is the DNN detector (see DnnFaceDetector) — kept
+    rather than removed in case the swap needs reverting; smile detection
+    is still Haar and still uses its own pair below.
+    """
 
     face_scale_factor: float
     face_min_neighbors: int
+    face_detection_confidence: float
     smile_scale_factor: float
     smile_min_neighbors: int
     smile_roi_min_height: int
@@ -211,6 +288,7 @@ class DetectionSettings:
         return cls(
             face_scale_factor=float(params.face_scale_factor),
             face_min_neighbors=int(params.face_min_neighbors),
+            face_detection_confidence=float(params.face_detection_confidence),
             smile_scale_factor=float(params.smile_scale_factor),
             smile_min_neighbors=int(params.smile_min_neighbors),
             smile_roi_min_height=int(params.smile_roi_min_height_pixels),
@@ -221,6 +299,7 @@ class DetectionSettings:
 DEFAULT_DETECTION = DetectionSettings(
     face_scale_factor=1.1,
     face_min_neighbors=4,
+    face_detection_confidence=0.5,
     smile_scale_factor=1.3,
     smile_min_neighbors=10,
     smile_roi_min_height=64,
@@ -360,7 +439,7 @@ def extract_window_signals(
     if settings.max_width:
         frames = [downscale_to_width(frame, settings.max_width) for frame in frames]
 
-    face_cascade = haar_cascade("haarcascade_frontalface_default.xml")
+    face_cascade = dnn_face_detector(confidence_threshold=settings.face_detection_confidence)
     smile_cascade = haar_cascade("haarcascade_smile.xml")
 
     face_total = 0
