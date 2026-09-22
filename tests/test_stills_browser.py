@@ -80,6 +80,21 @@ def test_stills_browser_lists_stills(authenticated_client, sample_still):
 
 
 @pytest.mark.django_db
+def test_stills_browser_renders_lightbox_trigger_and_dialog(authenticated_client, sample_still):
+    """Clicking a still opens a larger view rather than doing nothing."""
+    client, _user = authenticated_client
+
+    response = client.get(reverse("stills-browser"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    still_url = reverse("still-image", args=[sample_still.id])
+    assert f'data-lightbox-src="{still_url}"' in content
+    assert 'id="still-lightbox"' in content
+    assert 'src="/static/js/stills-lightbox.js"' in content
+
+
+@pytest.mark.django_db
 def test_stills_browser_empty_state(authenticated_client):
     client, _user = authenticated_client
 
