@@ -51,7 +51,7 @@ def test_score_still_frame_rewards_sharp_smiling_well_composed():
 
     assert candidate.at_seconds == 12.0
     assert candidate.face_count == 1
-    assert candidate.smile_ratio == 1.0
+    assert candidate.smile_count == 1
     assert candidate.quality_score > 70.0
 
 
@@ -69,7 +69,7 @@ def test_score_still_frame_penalizes_blurry_no_face_frame():
     )
 
     assert candidate.face_count == 0
-    assert candidate.smile_ratio == 0.0
+    assert candidate.smile_count == 0
     assert candidate.quality_score < 10.0
 
 
@@ -85,16 +85,16 @@ class _SequencedSmileCascade:
         return [(0, 0, 10, 10)] if next(self._results, False) else []
 
 
-def test_score_still_frame_uses_smile_ratio_not_a_boolean():
+def test_score_still_frame_smile_count_beats_one_false_positive():
     """One noisy smile hit among several faces should not score the same as
-    most faces genuinely smiling — a boolean has_smile collapsed exactly
-    this distinction (caught on real footage: a frame with 1 smile out of 5
-    faces, none of them actually smiling, scored almost as high as a frame
-    with 4 smiles out of 9)."""
+    several faces genuinely smiling — a boolean has_smile collapsed exactly
+    this distinction (caught on real footage: a frame with 1 smile hit out
+    of 5 faces, none of them actually smiling, scored almost as high as a
+    frame with 4 smiles out of 9)."""
     frame = _sharp_frame()
     five_faces = _FakeCascade([(i * 20, 0, 30, 30) for i in range(5)])
 
-    mostly_smiling = score_still_frame(
+    several_smiling = score_still_frame(
         at_seconds=1.0,
         frame=frame,
         settings=DEFAULT_DETECTION,
@@ -109,9 +109,69 @@ def test_score_still_frame_uses_smile_ratio_not_a_boolean():
         smile_cascade=_SequencedSmileCascade([True, False, False, False, False]),
     )
 
-    assert mostly_smiling.smile_ratio == pytest.approx(0.8)
-    assert one_false_positive.smile_ratio == pytest.approx(0.2)
-    assert mostly_smiling.quality_score > one_false_positive.quality_score
+    assert several_smiling.smile_count == 4
+    assert one_false_positive.smile_count == 1
+    assert several_smiling.quality_score > one_false_positive.quality_score
+
+
+def test_score_still_frame_smile_count_does_not_punish_group_size():
+    """A ratio would score a 5-face frame with 3 genuine smiles below a
+    1-face frame with a single lucky hit (3/5 < 1/1) — a rich group shot
+    with several real smiles should not lose to a single-face frame just
+    for having more people in it."""
+    frame = _sharp_frame()
+
+    busy_group = score_still_frame(
+        at_seconds=1.0,
+        frame=frame,
+        settings=DEFAULT_DETECTION,
+        face_cascade=_FakeCascade([(i * 20, 0, 30, 30) for i in range(5)]),
+        smile_cascade=_SequencedSmileCascade([True, True, True, False, False]),
+    )
+    single_face = score_still_frame(
+        at_seconds=2.0,
+        frame=frame,
+        settings=DEFAULT_DETECTION,
+        face_cascade=_FakeCascade([(20, 20, 30, 30)]),
+        smile_cascade=_SequencedSmileCascade([True]),
+    )
+
+    assert busy_group.quality_score >= single_face.quality_score
+
+
+def _frame_with_border_blob(size: int = 240) -> np.ndarray:
+    """A sharp random-noise frame with a large flat (out-of-focus-looking)
+    block covering the right third, touching every row — the shape of a
+    phone-camera holder's own arm or torso blocking part of the shot."""
+    rng = np.random.default_rng(1)
+    frame = rng.integers(0, 255, size=(size, size), dtype=np.uint8)
+    frame[:, (size * 2) // 3 :] = 130
+    return frame
+
+
+def test_obstructed_frame_is_penalized():
+    frame = _frame_with_border_blob()
+    face_cascade = _FakeCascade([(10, 10, 60, 60)])
+    smile_cascade = _FakeCascade([(0, 0, 5, 5)])
+
+    obstructed = score_still_frame(
+        at_seconds=1.0,
+        frame=frame,
+        settings=DEFAULT_DETECTION,
+        face_cascade=face_cascade,
+        smile_cascade=smile_cascade,
+    )
+    clean = score_still_frame(
+        at_seconds=2.0,
+        frame=_sharp_frame(size=240),
+        settings=DEFAULT_DETECTION,
+        face_cascade=face_cascade,
+        smile_cascade=smile_cascade,
+    )
+
+    assert obstructed.obstructed is True
+    assert clean.obstructed is False
+    assert obstructed.quality_score < clean.quality_score
 
 
 class _FakeSampler:
@@ -157,13 +217,28 @@ def test_select_stills_respects_count_and_min_gap():
 
     candidates = [
         StillCandidate(
-            at_seconds=0.0, quality_score=90.0, face_count=1, smile_ratio=1.0, sharpness=200.0
+            at_seconds=0.0,
+            quality_score=90.0,
+            face_count=1,
+            smile_count=1,
+            sharpness=200.0,
+            obstructed=False,
         ),
         StillCandidate(
-            at_seconds=2.0, quality_score=85.0, face_count=1, smile_ratio=1.0, sharpness=190.0
+            at_seconds=2.0,
+            quality_score=85.0,
+            face_count=1,
+            smile_count=1,
+            sharpness=190.0,
+            obstructed=False,
         ),
         StillCandidate(
-            at_seconds=40.0, quality_score=70.0, face_count=1, smile_ratio=1.0, sharpness=180.0
+            at_seconds=40.0,
+            quality_score=70.0,
+            face_count=1,
+            smile_count=1,
+            sharpness=180.0,
+            obstructed=False,
         ),
     ]
 
@@ -183,10 +258,20 @@ def test_select_stills_min_quality_score_stops_filling_still_count():
 
     candidates = [
         StillCandidate(
-            at_seconds=0.0, quality_score=90.0, face_count=1, smile_ratio=1.0, sharpness=200.0
+            at_seconds=0.0,
+            quality_score=90.0,
+            face_count=1,
+            smile_count=1,
+            sharpness=200.0,
+            obstructed=False,
         ),
         StillCandidate(
-            at_seconds=10.0, quality_score=40.0, face_count=0, smile_ratio=0.0, sharpness=20.0
+            at_seconds=10.0,
+            quality_score=40.0,
+            face_count=0,
+            smile_count=0,
+            sharpness=20.0,
+            obstructed=False,
         ),
     ]
 

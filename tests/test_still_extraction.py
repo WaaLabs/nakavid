@@ -51,10 +51,20 @@ def _create_type_a_video(*, storage_root: Path, user) -> Video:
 def _candidates() -> list[StillCandidate]:
     return [
         StillCandidate(
-            at_seconds=10.0, quality_score=88.0, face_count=1, smile_ratio=1.0, sharpness=200.0
+            at_seconds=10.0,
+            quality_score=88.0,
+            face_count=1,
+            smile_count=1,
+            sharpness=200.0,
+            obstructed=False,
         ),
         StillCandidate(
-            at_seconds=30.0, quality_score=70.0, face_count=1, smile_ratio=1.0, sharpness=180.0
+            at_seconds=30.0,
+            quality_score=70.0,
+            face_count=1,
+            smile_count=1,
+            sharpness=180.0,
+            obstructed=False,
         ),
     ]
 

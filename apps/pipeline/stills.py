@@ -32,6 +32,29 @@ SHARPNESS_SCALE = 150.0
 # A face filling at least this fraction of the frame reads as intentionally
 # composed rather than a distant figure in the background.
 TARGET_FACE_AREA_RATIO = 0.04
+# 3+ faces genuinely smiling fully saturates the smile component. A plain
+# ratio (smile_count / face_count) penalised busy group shots for not
+# having literally everyone smiling — a 9-face shot with 4 real smiles
+# scored below a 1-face shot with a single lucky (or false-positive) hit.
+# A raw boolean had the opposite problem: one noisy Haar false positive
+# among many faces scored identically to several genuine smiles. A capped
+# count rewards more real smiles without punishing group size.
+SMILE_COUNT_SATURATION = 3
+
+# Foreground-obstruction detection. A phone held close to the lens — an
+# arm, a shoulder, a hand — is almost always badly out of focus relative
+# to a scene the camera is actually focused on, regardless of what it is.
+# Splitting the frame into a grid and flagging border tiles that are far
+# less sharp than the sharpest tile catches this without needing to know
+# what the obstruction actually is. Assumes phone-camera footage with deep
+# depth of field, where a genuinely soft region this large is far more
+# likely to be something blocking the lens than intentional background
+# bokeh — a shallow-DOF source would need this revisited.
+OBSTRUCTION_GRID_ROWS = 3
+OBSTRUCTION_GRID_COLS = 4
+OBSTRUCTION_TILE_SHARPNESS_RATIO = 0.15
+OBSTRUCTION_AREA_THRESHOLD = 0.15
+OBSTRUCTION_PENALTY = 0.5
 
 
 @dataclass(frozen=True)
@@ -39,8 +62,9 @@ class StillCandidate:
     at_seconds: float
     quality_score: float
     face_count: int
-    smile_ratio: float
+    smile_count: int
     sharpness: float
+    obstructed: bool
 
 
 def _laplacian_sharpness(frame: np.ndarray) -> float:
@@ -55,6 +79,39 @@ def _largest_face_area_ratio(faces, frame_shape: tuple[int, ...]) -> float:
         return 0.0
     largest = max(int(width) * int(height) for (_x, _y, width, height) in faces)
     return largest / frame_area
+
+
+def _is_obstructed(
+    frame: np.ndarray,
+    *,
+    rows: int = OBSTRUCTION_GRID_ROWS,
+    cols: int = OBSTRUCTION_GRID_COLS,
+) -> bool:
+    """True if a large, badly out-of-focus region sits against a frame edge."""
+    height, width = frame.shape[:2]
+    tile_h, tile_w = height // rows, width // cols
+    if tile_h <= 0 or tile_w <= 0:
+        return False
+
+    sharpness_grid = np.zeros((rows, cols))
+    for row in range(rows):
+        for col in range(cols):
+            tile = frame[row * tile_h : (row + 1) * tile_h, col * tile_w : (col + 1) * tile_w]
+            sharpness_grid[row, col] = _laplacian_sharpness(tile)
+
+    max_sharpness = sharpness_grid.max()
+    if max_sharpness <= 0:
+        return False
+    threshold = max_sharpness * OBSTRUCTION_TILE_SHARPNESS_RATIO
+
+    obstructed_tiles = 0
+    for row in range(rows):
+        for col in range(cols):
+            is_border_tile = row in (0, rows - 1) or col in (0, cols - 1)
+            if is_border_tile and sharpness_grid[row, col] < threshold:
+                obstructed_tiles += 1
+
+    return (obstructed_tiles / (rows * cols)) >= OBSTRUCTION_AREA_THRESHOLD
 
 
 def score_still_frame(
@@ -76,30 +133,29 @@ def score_still_frame(
     )
     sharpness = _laplacian_sharpness(frame)
     face_area_ratio = _largest_face_area_ratio(faces, frame.shape)
-    # What fraction of faces are smiling, not just whether any single one
-    # is — a boolean let one noisy Haar smile false-positive among several
-    # faces score identically to a frame where most faces are genuinely
-    # smiling. count_smiles_in_faces caps at one smile per face, so this
-    # ratio is always in [0, 1].
-    smile_ratio = (smile_count / len(faces)) if len(faces) else 0.0
+    obstructed = _is_obstructed(frame)
 
     sharpness_component = min(sharpness / SHARPNESS_SCALE, 1.0)
     face_component = 1.0 if len(faces) else 0.0
+    smile_component = min(smile_count / SMILE_COUNT_SATURATION, 1.0) if len(faces) else 0.0
     composition_component = min(face_area_ratio / TARGET_FACE_AREA_RATIO, 1.0)
 
     quality_score = (
         sharpness_component * SHARPNESS_WEIGHT
         + face_component * FACE_WEIGHT
-        + smile_ratio * SMILE_WEIGHT
+        + smile_component * SMILE_WEIGHT
         + composition_component * COMPOSITION_WEIGHT
     ) * 100.0
+    if obstructed:
+        quality_score *= OBSTRUCTION_PENALTY
 
     return StillCandidate(
         at_seconds=at_seconds,
         quality_score=round(quality_score, 2),
         face_count=len(faces),
-        smile_ratio=round(smile_ratio, 4),
+        smile_count=smile_count,
         sharpness=round(sharpness, 2),
+        obstructed=obstructed,
     )
 
 
