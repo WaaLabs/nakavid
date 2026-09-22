@@ -39,7 +39,7 @@ class StillCandidate:
     at_seconds: float
     quality_score: float
     face_count: int
-    has_smile: bool
+    smile_ratio: float
     sharpness: float
 
 
@@ -76,16 +76,21 @@ def score_still_frame(
     )
     sharpness = _laplacian_sharpness(frame)
     face_area_ratio = _largest_face_area_ratio(faces, frame.shape)
+    # What fraction of faces are smiling, not just whether any single one
+    # is — a boolean let one noisy Haar smile false-positive among several
+    # faces score identically to a frame where most faces are genuinely
+    # smiling. count_smiles_in_faces caps at one smile per face, so this
+    # ratio is always in [0, 1].
+    smile_ratio = (smile_count / len(faces)) if len(faces) else 0.0
 
     sharpness_component = min(sharpness / SHARPNESS_SCALE, 1.0)
     face_component = 1.0 if len(faces) else 0.0
-    smile_component = 1.0 if smile_count else 0.0
     composition_component = min(face_area_ratio / TARGET_FACE_AREA_RATIO, 1.0)
 
     quality_score = (
         sharpness_component * SHARPNESS_WEIGHT
         + face_component * FACE_WEIGHT
-        + smile_component * SMILE_WEIGHT
+        + smile_ratio * SMILE_WEIGHT
         + composition_component * COMPOSITION_WEIGHT
     ) * 100.0
 
@@ -93,7 +98,7 @@ def score_still_frame(
         at_seconds=at_seconds,
         quality_score=round(quality_score, 2),
         face_count=len(faces),
-        has_smile=smile_count > 0,
+        smile_ratio=round(smile_ratio, 4),
         sharpness=round(sharpness, 2),
     )
 
