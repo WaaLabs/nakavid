@@ -459,6 +459,76 @@ tbody tr:last-child td {
   background: var(--nv-surface-raised);
 }
 
+.card__media-trigger {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  border-radius: 0;
+  cursor: zoom-in;
+}
+
+/* ---------- lightbox ---------- */
+
+.lightbox {
+  border: none;
+  border-radius: var(--nv-radius);
+  background: var(--nv-surface);
+  color: var(--nv-text);
+  max-width: min(92vw, 64rem);
+  max-height: 92vh;
+  padding: 0;
+  overflow: visible;
+}
+
+.lightbox::backdrop {
+  background: rgb(0 0 0 / 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.lightbox__image {
+  display: block;
+  max-width: min(92vw, 64rem);
+  max-height: 80vh;
+  width: auto;
+  height: auto;
+  border-radius: var(--nv-radius) var(--nv-radius) 0 0;
+}
+
+.lightbox__caption {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--nv-text-muted);
+}
+
+.lightbox__close {
+  position: absolute;
+  top: -0.75rem;
+  right: -0.75rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--nv-border-strong);
+  background: var(--nv-surface-raised);
+  color: var(--nv-text);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.lightbox__close:hover {
+  background: var(--nv-danger-bg);
+  border-color: var(--nv-danger);
+  color: var(--nv-danger);
+}
+
 .card__body {
   padding: 0.75rem 0.9rem 0.9rem;
   display: grid;

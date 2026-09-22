@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Stills — NakaVid{% endblock %}
 {% block heading %}Stills{% endblock %}
@@ -12,7 +13,14 @@
   {% for still in stills %}
   <article class="card">
     <div class="card__media"{% if still.video.width and still.video.height %} style="--card-aspect: {{ still.video.width }} / {{ still.video.height }}"{% endif %}>
-      <img src="{% url 'still-image' still.id %}" alt="Still from {{ still.video.title }}" loading="lazy" />
+      <button
+        type="button"
+        class="card__media-trigger"
+        data-lightbox-src="{% url 'still-image' still.id %}"
+        data-lightbox-caption="{{ still.video.title }} · {{ still.capture_label }} · score {{ still.quality_score }}"
+      >
+        <img src="{% url 'still-image' still.id %}" alt="Still from {{ still.video.title }}" loading="lazy" />
+      </button>
     </div>
     <div class="card__body">
       <h2 class="card__title">
@@ -35,7 +43,17 @@
   {% endfor %}
 </div>
 {% include "_pagination.html" %}
+
+<dialog id="still-lightbox" class="lightbox">
+  <button type="button" class="lightbox__close" aria-label="Close">&times;</button>
+  <img class="lightbox__image" alt="" />
+  <p class="lightbox__caption"></p>
+</dialog>
 {% else %}
 <p class="empty">No stills yet.</p>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/stills-lightbox.js' %}" defer></script>
 {% endblock %}
