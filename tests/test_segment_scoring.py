@@ -299,7 +299,7 @@ def test_smiles_are_counted_only_inside_detected_faces():
     """
     import numpy as np
 
-    from apps.pipeline.scoring import DEFAULT_DETECTION, _count_smiles_in_faces
+    from apps.pipeline.scoring import DEFAULT_DETECTION, count_smiles_in_faces
 
     class FakeCascade:
         """Reports one detection for any region it is given."""
@@ -315,7 +315,7 @@ def test_smiles_are_counted_only_inside_detected_faces():
     cascade = FakeCascade()
 
     # Two faces -> the cascade is offered exactly two mouth regions.
-    total = _count_smiles_in_faces(
+    total = count_smiles_in_faces(
         frame=frame,
         faces=[(0, 0, 40, 40), (100, 20, 40, 40)],
         smile_cascade=cascade,
@@ -332,7 +332,7 @@ def test_smiles_are_counted_only_inside_detected_faces():
     # No faces -> no smiles, and the cascade is never run.
     cascade_two = FakeCascade()
     assert (
-        _count_smiles_in_faces(
+        count_smiles_in_faces(
             frame=frame, faces=[], smile_cascade=cascade_two, settings=DEFAULT_DETECTION
         )
         == 0

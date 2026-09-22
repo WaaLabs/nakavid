@@ -31,7 +31,7 @@ from apps.library.forms import (
     TypeAIngestMetadataForm,
     TypeBIngestForm,
 )
-from apps.library.models import Clip, Combine, CombineClip, Tag, TagCategory, Video
+from apps.library.models import Clip, Combine, CombineClip, Still, Tag, TagCategory, Video
 from apps.library.resumable_upload import (
     TUS_RESUMABLE_HEADER,
     TUS_VERSION,
@@ -704,6 +704,33 @@ def clip_thumbnail(request, clip_id: int):
         raise Http404("Clip has no thumbnail")
     response = HttpResponse()
     response["X-Accel-Redirect"] = to_accel_redirect_path(clip.thumbnail_path)
+    response["Content-Type"] = ""
+    return response
+
+
+@login_required
+def stills_browser(request):
+    stills = Still.objects.select_related("video").order_by(
+        "-video__recorded_at", "-quality_score", "-id"
+    )
+    page, querystring = paginate(request, stills)
+    return render(
+        request,
+        "library/stills_browser.html",
+        {
+            "stills": page,
+            "page": page,
+            "querystring": querystring,
+        },
+    )
+
+
+@login_required
+def still_image(request, still_id: int):
+    """Serve a still through the same auth-then-proxy handoff as clip_thumbnail."""
+    still = get_object_or_404(Still.objects.select_related("video"), pk=still_id)
+    response = HttpResponse()
+    response["X-Accel-Redirect"] = to_accel_redirect_path(still.storage_path)
     response["Content-Type"] = ""
     return response
 

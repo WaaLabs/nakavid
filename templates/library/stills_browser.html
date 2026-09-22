@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Stills — NakaVid{% endblock %}
+{% block heading %}Stills{% endblock %}
+{% block intro %}
+<p class="intro">Sharp, smiling-face frames pulled from long recordings — a moment, not a segment.</p>
+{% endblock %}
+
+{% block content %}
+{% if stills %}
+<div class="card-grid">
+  {% for still in stills %}
+  <article class="card">
+    <div class="card__media"{% if still.video.width and still.video.height %} style="--card-aspect: {{ still.video.width }} / {{ still.video.height }}"{% endif %}>
+      <img src="{% url 'still-image' still.id %}" alt="Still from {{ still.video.title }}" loading="lazy" />
+    </div>
+    <div class="card__body">
+      <h2 class="card__title">
+        {% if still.video.is_long_recording %}
+        <a href="{% url 'lesson-view' still.video.id %}">{{ still.video.title }}</a>
+        {% else %}
+        {{ still.video.title }}
+        {% endif %}
+      </h2>
+      <p class="card__meta">{{ still.video.class_name }} · {{ still.video.theme }}</p>
+      <p class="card__meta card__timecode">
+        {{ still.capture_label }} <span class="card__timecode-of">in source</span>
+      </p>
+      <div class="card__footer">
+        <span class="card__meta">{{ still.video.recorded_at|date:"Y-m-d" }}</span>
+        <span class="badge badge--score">{{ still.quality_score }}</span>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% include "_pagination.html" %}
+{% else %}
+<p class="empty">No stills yet.</p>
+{% endif %}
+{% endblock %}

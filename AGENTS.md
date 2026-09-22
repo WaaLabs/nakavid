@@ -57,11 +57,22 @@ Do not touch `backups/`.
   ```
   /nakavid/originals/{year}/{month}/{day}/{filename}
   /nakavid/highlights/{year}/{month}/{day}/{stem}__clip_{NNN}.mp4 (+ .jpg)
+  /nakavid/highlights/{year}/{month}/{day}/{stem}__still_{NNN}.jpg
   /nakavid/combines/{title}_{date}.mp4
   ```
   Two derived files sit beside their source, marked by suffix so they are
   recoverable from disk alone: `{stem}__web.mp4` (browser-safe H.264 rendition)
-  and `{stem}__sheet.jpg` (contact-sheet sprite used by scoring tuning).
+  and `{stem}__sheet.jpg` (contact-sheet sprite used by scoring tuning). A
+  still is a single re-extracted frame, not a paired clip — one JPG, no
+  video file — and lives in `highlights/` alongside clips rather than its
+  own top-level folder, since both are derived highlight artifacts of the
+  same source recording. When more than one `ScoringParams` row has
+  produced output for the same recording (comparing two extraction
+  approaches), the filename carries a variant suffix keyed to that run so
+  the two coexist on disk instead of one overwriting the other — a clip's
+  is empty for the everyday default run and `__eval-{scoring_params_id}`
+  for a non-default one; a still's is always `__p{scoring_params_id}`,
+  since stills have no single default run yet.
   Folders are keyed on date only, so class/theme spelling or a later rename
   never touches the filesystem — but it also means the DB is the only copy of
   which class or theme a video belongs to; there is no disk-alone recovery

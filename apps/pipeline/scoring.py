@@ -102,7 +102,7 @@ def smooth_scores(scores: list[float], *, window_size: int) -> list[float]:
     return smoothed
 
 
-def _haar_cascade(name: str) -> cv2.CascadeClassifier:
+def haar_cascade(name: str) -> cv2.CascadeClassifier:
     cascade_path = Path(cv2.data.haarcascades) / name
     classifier = cv2.CascadeClassifier(str(cascade_path))
     if classifier.empty():
@@ -271,7 +271,7 @@ class AudioTrack:
         return self.samples[begin:finish]
 
 
-def _count_smiles_in_faces(
+def count_smiles_in_faces(
     *, frame: np.ndarray, faces, smile_cascade, settings: DetectionSettings
 ) -> int:
     """Count smiling faces — at most one per face, and only inside faces.
@@ -321,7 +321,7 @@ def _upscale_to_height(region: np.ndarray, min_height: int) -> np.ndarray:
     )
 
 
-def _downscale_to_width(frame: np.ndarray, max_width: int) -> np.ndarray:
+def downscale_to_width(frame: np.ndarray, max_width: int) -> np.ndarray:
     """Shrink a frame for detection when it is wider than max_width."""
     height, width = frame.shape[:2]
     if width <= max_width:
@@ -358,10 +358,10 @@ def extract_window_signals(
             max_frames=frames_per_window,
         )
     if settings.max_width:
-        frames = [_downscale_to_width(frame, settings.max_width) for frame in frames]
+        frames = [downscale_to_width(frame, settings.max_width) for frame in frames]
 
-    face_cascade = _haar_cascade("haarcascade_frontalface_default.xml")
-    smile_cascade = _haar_cascade("haarcascade_smile.xml")
+    face_cascade = haar_cascade("haarcascade_frontalface_default.xml")
+    smile_cascade = haar_cascade("haarcascade_smile.xml")
 
     face_total = 0
     smile_total = 0
@@ -375,7 +375,7 @@ def extract_window_signals(
             minNeighbors=settings.face_min_neighbors,
         )
         face_total += len(faces)
-        smile_total += _count_smiles_in_faces(
+        smile_total += count_smiles_in_faces(
             frame=frame, faces=faces, smile_cascade=smile_cascade, settings=settings
         )
 

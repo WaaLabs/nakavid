@@ -81,6 +81,34 @@ def build_highlight_relative_paths(
     return str(base / f"{clip_name}.mp4"), str(base / f"{clip_name}.jpg")
 
 
+def build_still_relative_path(
+    *,
+    recorded_at: date | datetime,
+    source_stem: str,
+    still_index: int,
+    variant: str = "",
+) -> str:
+    """highlights/{year}/{month}/{day}/{stem}__still_{NNN}.jpg — parallel to
+    build_highlight_relative_paths' clip naming, one file per still.
+
+    variant keys the filename to the ScoringParams row that produced it, the
+    same way a clip's variant does — stills have no single "default" run yet,
+    so two ScoringParams rows extracting stills for the same video would
+    otherwise collide on the same path at the same still_index."""
+    if isinstance(recorded_at, datetime):
+        recorded_at = recorded_at.date()
+    still_name = f"{source_stem}__still_{still_index:03d}"
+    if variant:
+        still_name = f"{still_name}__{variant}"
+    base = (
+        PurePosixPath(HIGHLIGHTS_PREFIX)
+        / str(recorded_at.year)
+        / f"{recorded_at.month:02d}"
+        / f"{recorded_at.day:02d}"
+    )
+    return str(base / f"{still_name}.jpg")
+
+
 def build_contact_sheet_relative_path(source_relative_path: str) -> str:
     """Sibling contact-sheet sprite path, alongside the source it samples."""
     source = PurePosixPath(source_relative_path)

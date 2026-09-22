@@ -156,6 +156,50 @@ class Clip(models.Model):
         return f"{self.video.title} [{self.start_seconds}-{self.end_seconds}]"
 
 
+class Still(models.Model):
+    """A single sharp, smiling-face frame — a moment, not a segment.
+
+    Parallel to Clip's relationship to Video, but a still has one timestamp
+    instead of a start/end pair, and no source rendition of its own to trim —
+    it's a single re-extracted frame.
+    """
+
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="stills")
+    storage_path = models.CharField(max_length=1024, unique=True)
+    capture_seconds = models.DecimalField(max_digits=8, decimal_places=3)
+    quality_score = models.PositiveSmallIntegerField(default=0)
+    # Which ScoringParams row's still_* tunables produced this — same
+    # provenance/coexistence pattern as Clip.scoring_params.
+    scoring_params = models.ForeignKey(
+        "pipeline.ScoringParams",
+        on_delete=models.PROTECT,
+        related_name="stills",
+        null=True,
+        blank=True,
+    )
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="stills")
+    tags = models.ManyToManyField(Tag, related_name="stills", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quality_score__gte=0, quality_score__lte=100),
+                name="still_quality_score_range",
+            ),
+        ]
+        ordering = ["-quality_score", "capture_seconds"]
+
+    @property
+    def capture_label(self) -> str:
+        """Where this still falls in its source recording, as m:ss."""
+        return format_timecode_seconds(int(self.capture_seconds))
+
+    def __str__(self) -> str:
+        return f"{self.video.title} @ {self.capture_seconds}s"
+
+
 class Combine(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

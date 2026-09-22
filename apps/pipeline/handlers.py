@@ -8,12 +8,13 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.library.immich_ingest import resolve_default_user, run_immich_ingest
-from apps.library.models import Clip, Combine, Tag, Video
+from apps.library.models import Clip, Combine, Still, Tag, Video
 from apps.library.storage_paths import (
     build_combine_relative_path,
     build_contact_sheet_relative_path,
     build_highlight_relative_paths,
     build_playback_relative_path,
+    build_still_relative_path,
     build_video_thumbnail_relative_path,
     to_absolute_storage_path,
 )
@@ -34,6 +35,7 @@ from apps.pipeline.extraction import (
 from apps.pipeline.models import Job, ScoringParams
 from apps.pipeline.probe import needs_web_transcode, run_ffprobe
 from apps.pipeline.scoring import run_segment_scoring, scoring_params_from_job
+from apps.pipeline.stills import gather_still_candidates, select_stills
 from apps.pipeline.transcode import run_ffmpeg_web_transcode
 
 
@@ -326,6 +328,62 @@ def handle_clip_extraction(job: Job) -> None:
                 clip.tags.set(tag_ids)
 
 
+def handle_still_extraction(job: Job) -> None:
+    """Best-frame stills for a long recording — sharp, smiling, well composed.
+
+    A still is not derived from the clip energy curve; it's its own coarse
+    sampling pass over the whole recording (see gather_still_candidates), so
+    this only needs the video's own file, not a prior score stage.
+    """
+    video = job.video
+    if video.video_type != Video.VideoType.TYPE_A:
+        return
+
+    params = scoring_params_from_job(job)
+    source_stem = Path(video.source_path).stem
+    duration_seconds = float(video.duration_seconds)
+    source_file_path = _playback_file_path(video)
+
+    candidates = gather_still_candidates(
+        video_path=source_file_path,
+        duration_seconds=duration_seconds,
+        params=params,
+    )
+    selections = select_stills(candidates=candidates, params=params)
+
+    storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+    video_tag_ids = list(video.tags.values_list("id", flat=True))
+
+    with transaction.atomic():
+        video.stills.filter(scoring_params=params).delete()
+        for still_index, selection in enumerate(selections, start=1):
+            relative_still_path = build_still_relative_path(
+                recorded_at=video.recorded_at,
+                source_stem=source_stem,
+                still_index=still_index,
+                variant=f"p{params.pk}",
+            )
+            absolute_still_path = to_absolute_storage_path(storage_root, relative_still_path)
+            still_file_path = storage_root / relative_still_path
+
+            run_ffmpeg_thumbnail(
+                source_path=source_file_path,
+                target_path=still_file_path,
+                at_seconds=selection.at_seconds,
+            )
+
+            still = Still.objects.create(
+                video=video,
+                storage_path=absolute_still_path,
+                capture_seconds=Decimal(f"{selection.at_seconds:.3f}"),
+                quality_score=int(round(selection.quality_score)),
+                scoring_params=params,
+                created_by=video.created_by,
+            )
+            if video_tag_ids:
+                still.tags.set(video_tag_ids)
+
+
 def _score_short_recording(*, video: Video, params) -> None:
     """Score a short recording in place — it is already its own clip.
 
@@ -427,6 +485,7 @@ JOB_HANDLERS = {
     Job.JobType.INGEST: handle_ingest,
     Job.JobType.TRANSCODE: handle_transcode,
     Job.JobType.CLIP_EXTRACTION: handle_clip_extraction,
+    Job.JobType.STILL_EXTRACTION: handle_still_extraction,
     Job.JobType.SCORE: handle_score,
     Job.JobType.CONTACT_SHEET: handle_contact_sheet,
     Job.JobType.COMBINE_EXPORT: handle_combine_export,

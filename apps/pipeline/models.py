@@ -66,6 +66,18 @@ class ScoringParams(models.Model):
     # candidate is eligible). Candidates are ranked highest-score-first, so
     # once one falls below the floor every remaining candidate does too.
     min_peak_score = models.PositiveSmallIntegerField(default=0)
+
+    # Still extraction. A separate, coarser sampling pass over the whole
+    # recording — a still needs one representative frame per candidate
+    # instant, not the ~12-frame average a clip window scores.
+    still_count = models.PositiveSmallIntegerField(default=6)
+    still_min_gap_seconds = models.PositiveSmallIntegerField(default=10)
+    still_sample_step_seconds = models.PositiveSmallIntegerField(default=2)
+    # A candidate below this quality score is not selected at all, even if
+    # still_count isn't met yet — mirrors min_peak_score's "ceiling, not a
+    # target" behaviour. 0 keeps every candidate eligible.
+    still_min_quality_score = models.PositiveSmallIntegerField(default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -85,6 +97,7 @@ class Job(models.Model):
         INGEST = "ingest", "Ingest"
         TRANSCODE = "transcode", "Transcode"
         CLIP_EXTRACTION = "clip_extraction", "Clip Extraction"
+        STILL_EXTRACTION = "still_extraction", "Still Extraction"
         SCORE = "score", "Score"
         CONTACT_SHEET = "contact_sheet", "Contact Sheet"
         COMBINE_EXPORT = "combine_export", "Combine Export"

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.library.models import Clip, Combine, Tag, TagCategory, Video
+from apps.library.models import Clip, Combine, Still, Tag, TagCategory, Video
 
 
 @admin.register(TagCategory)
@@ -37,6 +37,13 @@ class ClipAdmin(admin.ModelAdmin):
         "scoring_params",
     )
     list_filter = ("highlight_score", "scoring_params")
+    filter_horizontal = ("tags",)
+
+
+@admin.register(Still)
+class StillAdmin(admin.ModelAdmin):
+    list_display = ("id", "video", "capture_seconds", "quality_score", "scoring_params")
+    list_filter = ("quality_score", "scoring_params")
     filter_horizontal = ("tags",)
 
 

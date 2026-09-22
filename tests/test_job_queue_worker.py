@@ -167,6 +167,7 @@ def test_dispatch_job_routes_all_job_types(video):
         patch("apps.pipeline.handlers.run_ffmpeg_contact_sheet"),
         patch("apps.pipeline.handlers.resolve_default_user", return_value=video.created_by),
         patch("apps.pipeline.handlers.run_immich_ingest"),
+        patch("apps.pipeline.handlers.gather_still_candidates", return_value=[]),
     ):
         scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
         with patch("apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result):
