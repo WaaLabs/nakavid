@@ -42,6 +42,14 @@ def enqueue_clip_extraction_job(*, video: Video, scoring_params_id: int | None) 
     )
 
 
+def enqueue_still_extraction_job(*, video: Video, scoring_params_id: int | None) -> Job:
+    return Job.objects.create(
+        video=video,
+        job_type=Job.JobType.STILL_EXTRACTION,
+        scoring_params_id=scoring_params_id,
+    )
+
+
 def enqueue_combine_export_job(*, combine: Combine) -> Job:
     first_combine_clip = (
         combine.combine_clips.select_related("clip__video").order_by("position").first()

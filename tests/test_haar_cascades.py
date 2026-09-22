@@ -8,18 +8,18 @@ AttributeError on real footage. These tests touch the real cv2 build.
 
 import pytest
 
-from apps.pipeline.scoring import ScoringError, _haar_cascade
+from apps.pipeline.scoring import ScoringError, haar_cascade
 
 REQUIRED_CASCADES = ("haarcascade_frontalface_default.xml", "haarcascade_smile.xml")
 
 
 @pytest.mark.parametrize("cascade_name", REQUIRED_CASCADES)
-def test_required_haar_cascade_loads(cascade_name: str):
-    classifier = _haar_cascade(cascade_name)
+def test_requiredhaar_cascade_loads(cascade_name: str):
+    classifier = haar_cascade(cascade_name)
 
     assert not classifier.empty()
 
 
 def test_missing_cascade_raises_scoring_error():
     with pytest.raises(ScoringError, match="Haar cascade unavailable"):
-        _haar_cascade("haarcascade_not_a_real_cascade.xml")
+        haar_cascade("haarcascade_not_a_real_cascade.xml")
