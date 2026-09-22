@@ -205,6 +205,9 @@ def test_handle_score_persists_energy_curve(storage_root, user):
     extraction_job = Job.objects.filter(video=video, job_type=Job.JobType.CLIP_EXTRACTION).first()
     assert extraction_job is not None
     assert extraction_job.scoring_params_id == params.pk
+    still_job = Job.objects.filter(video=video, job_type=Job.JobType.STILL_EXTRACTION).first()
+    assert still_job is not None
+    assert still_job.scoring_params_id == params.pk
     # The recordings browse page shows one card per video, so scoring also
     # gives it its own poster frame rather than borrowing a clip's.
     run_thumbnail.assert_called_once()

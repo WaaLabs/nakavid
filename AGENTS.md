@@ -70,9 +70,11 @@ Do not touch `backups/`.
   produced output for the same recording (comparing two extraction
   approaches), the filename carries a variant suffix keyed to that run so
   the two coexist on disk instead of one overwriting the other — a clip's
-  is empty for the everyday default run and `__eval-{scoring_params_id}`
-  for a non-default one; a still's is always `__p{scoring_params_id}`,
-  since stills have no single default run yet.
+  is empty for the everyday fixed-mode run and `__eval-{scoring_params_id}`
+  for a non-default one, since clips have that fixed/variable distinction
+  to hang a "default" on; a still's is always `__p{scoring_params_id}`,
+  since stills only have one algorithm and any of several ScoringParams
+  rows can produce a run worth comparing.
   Folders are keyed on date only, so class/theme spelling or a later rename
   never touches the filesystem — but it also means the DB is the only copy of
   which class or theme a video belongs to; there is no disk-alone recovery
