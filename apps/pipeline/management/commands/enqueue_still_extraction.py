@@ -1,10 +1,10 @@
 """Queue a still-extraction job for one video against a specific ScoringParams row.
 
-Stills are a new, still-tuning feature — triggered manually rather than
-folded into the automatic pipeline yet, so existing videos aren't
-reprocessed before the still_* thresholds have been validated on real
-footage. See enqueue_clip_extraction_eval for the same pattern applied to
-clip extraction.
+handle_score already enqueues still extraction automatically for every
+newly-scored video, using whichever ScoringParams row did the scoring. This
+command is for re-running an already-scored video against a *different*
+ScoringParams row — comparing still_* tunables, the same pattern
+enqueue_clip_extraction_eval uses for comparing clip-extraction approaches.
 """
 
 from __future__ import annotations

@@ -24,6 +24,7 @@ from apps.pipeline.enqueue import (
     enqueue_clip_extraction_job,
     enqueue_contact_sheet_job,
     enqueue_score_job,
+    enqueue_still_extraction_job,
     enqueue_transcode_job,
 )
 from apps.pipeline.extraction import (
@@ -478,6 +479,7 @@ def handle_score(job: Job) -> None:
             update_fields=["energy_curve", "highlight_score", "thumbnail_path", "updated_at"]
         )
         enqueue_clip_extraction_job(video=video, scoring_params_id=params.pk)
+        enqueue_still_extraction_job(video=video, scoring_params_id=params.pk)
 
 
 JOB_HANDLERS = {
