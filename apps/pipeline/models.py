@@ -32,8 +32,17 @@ class ScoringParams(models.Model):
     # (1.7 / 20) were strict enough to suppress the false positives of a
     # whole-frame scan — which, once detection is scoped to a face, threw away
     # every real smile too: 0.4% of faces registered one.
+    # face_scale_factor/face_min_neighbors are dormant — face detection is
+    # the DNN detector now (see scoring.py's DnnFaceDetector), kept rather
+    # than removed in case that swap needs reverting.
     face_scale_factor = models.DecimalField(max_digits=3, decimal_places=2, default=1.10)
     face_min_neighbors = models.PositiveSmallIntegerField(default=4)
+    # Minimum confidence (0-1) for the DNN face detector to accept a box.
+    # 0.5 cleanly rejected two real false positives (Haar detecting a "face"
+    # on someone's hair/shoulder) on real footage without reintroducing
+    # noise at lower thresholds — start here, revisit once there's more
+    # footage to check it against.
+    face_detection_confidence = models.DecimalField(max_digits=3, decimal_places=2, default=0.50)
     smile_scale_factor = models.DecimalField(max_digits=3, decimal_places=2, default=1.30)
     smile_min_neighbors = models.PositiveSmallIntegerField(default=10)
     # Mouth regions are ~45px tall at a median face size, near the cascade's

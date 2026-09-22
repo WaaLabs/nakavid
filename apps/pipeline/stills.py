@@ -12,6 +12,7 @@ from apps.pipeline.scoring import (
     DetectionSettings,
     SequentialFrameSampler,
     count_smiles_in_faces,
+    dnn_face_detector,
     downscale_to_width,
     haar_cascade,
 )
@@ -173,7 +174,7 @@ def gather_still_candidates(
     12-frame average — but reuses the same cascades and sequential decode.
     """
     step_seconds = max(float(params.still_sample_step_seconds), 0.001)
-    face_cascade = haar_cascade("haarcascade_frontalface_default.xml")
+    face_cascade = dnn_face_detector(confidence_threshold=detection.face_detection_confidence)
     smile_cascade = haar_cascade("haarcascade_smile.xml")
 
     candidates: list[StillCandidate] = []
