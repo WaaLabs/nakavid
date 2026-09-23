@@ -4,14 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}NakaVid{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}" />
     <link rel="stylesheet" href="{% static 'css/nakavid.css' %}" />
     <script src="{% static 'js/nav.js' %}" defer></script>
     {% block head_extra %}{% endblock %}
   </head>
   <body>
-    {# Renders nothing visible, but guarantees the csrftoken cookie exists
-       even on pages with no <form> — rating buttons POST via fetch and
-       need it. #}
+    {% comment %}
+    Renders nothing visible, but guarantees the csrftoken cookie exists
+    even on pages with no <form> — rating buttons POST via fetch and
+    need it.
+    {% endcomment %}
     {% csrf_token %}
     {% url 'clips-browser' as clips_url %}
     <nav class="nv-nav">
