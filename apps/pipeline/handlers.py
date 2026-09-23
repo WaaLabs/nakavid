@@ -378,6 +378,10 @@ def handle_still_extraction(job: Job) -> None:
                 storage_path=absolute_still_path,
                 capture_seconds=Decimal(f"{selection.at_seconds:.3f}"),
                 quality_score=int(round(selection.quality_score)),
+                face_count=selection.face_count,
+                smile_count=selection.smile_count,
+                sharpness=selection.sharpness,
+                obstructed=selection.obstructed,
                 scoring_params=params,
                 created_by=video.created_by,
             )

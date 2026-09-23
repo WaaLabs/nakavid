@@ -9,6 +9,10 @@
     {% block head_extra %}{% endblock %}
   </head>
   <body>
+    {# Renders nothing visible, but guarantees the csrftoken cookie exists
+       even on pages with no <form> — rating buttons POST via fetch and
+       need it. #}
+    {% csrf_token %}
     {% url 'clips-browser' as clips_url %}
     <nav class="nv-nav">
       <div class="nv-nav__inner">

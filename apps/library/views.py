@@ -11,7 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -733,6 +733,44 @@ def still_image(request, still_id: int):
     response["X-Accel-Redirect"] = to_accel_redirect_path(still.storage_path)
     response["Content-Type"] = ""
     return response
+
+
+def _apply_rating(*, instance, rating_param: str) -> bool | None:
+    """up/down/clear -> True/False/None, applied and saved. The starting
+    point for checking whether the scoring formula's opinion of a pick
+    matches a human's, not just eyeballing it."""
+    if rating_param == "up":
+        instance.rating = True
+    elif rating_param == "down":
+        instance.rating = False
+    elif rating_param == "clear":
+        instance.rating = None
+    else:
+        raise ValueError(f"Invalid rating: {rating_param!r}")
+    instance.save(update_fields=["rating", "updated_at"])
+    return instance.rating
+
+
+@login_required
+@require_POST
+def rate_clip(request, clip_id: int):
+    clip = get_object_or_404(Clip, pk=clip_id)
+    try:
+        rating = _apply_rating(instance=clip, rating_param=request.POST.get("rating", ""))
+    except ValueError:
+        return HttpResponseBadRequest("Invalid rating")
+    return JsonResponse({"rating": rating})
+
+
+@login_required
+@require_POST
+def rate_still(request, still_id: int):
+    still = get_object_or_404(Still, pk=still_id)
+    try:
+        rating = _apply_rating(instance=still, rating_param=request.POST.get("rating", ""))
+    except ValueError:
+        return HttpResponseBadRequest("Invalid rating")
+    return JsonResponse({"rating": rating})
 
 
 @login_required

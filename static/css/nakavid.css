@@ -566,6 +566,38 @@ tbody tr:last-child td {
   margin-top: 0.15rem;
 }
 
+.rating {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.rating__button {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid var(--nv-border-strong);
+  color: var(--nv-text-muted);
+}
+
+.rating__button:hover {
+  border-color: var(--nv-accent);
+  color: var(--nv-text);
+  background: transparent;
+}
+
+.rating__button--up[aria-pressed="true"] {
+  border-color: var(--nv-success);
+  color: var(--nv-success);
+  background: var(--nv-success-bg);
+}
+
+.rating__button--down[aria-pressed="true"] {
+  border-color: var(--nv-danger);
+  color: var(--nv-danger);
+  background: var(--nv-danger-bg);
+}
+
 .card__details {
   margin-top: 0.15rem;
   font-size: 0.8125rem;

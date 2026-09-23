@@ -34,16 +34,28 @@ class ClipAdmin(admin.ModelAdmin):
         "start_seconds",
         "end_seconds",
         "highlight_score",
+        "rating",
         "scoring_params",
     )
-    list_filter = ("highlight_score", "scoring_params")
+    list_filter = ("highlight_score", "rating", "scoring_params")
     filter_horizontal = ("tags",)
 
 
 @admin.register(Still)
 class StillAdmin(admin.ModelAdmin):
-    list_display = ("id", "video", "capture_seconds", "quality_score", "scoring_params")
-    list_filter = ("quality_score", "scoring_params")
+    list_display = (
+        "id",
+        "video",
+        "capture_seconds",
+        "quality_score",
+        "rating",
+        "face_count",
+        "smile_count",
+        "sharpness",
+        "obstructed",
+        "scoring_params",
+    )
+    list_filter = ("quality_score", "rating", "obstructed", "scoring_params")
     filter_horizontal = ("tags",)
 
 

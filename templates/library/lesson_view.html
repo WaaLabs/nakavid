@@ -57,6 +57,10 @@
           <span class="card__meta">{{ clip.duration_label }}</span>
           <span class="badge badge--score">{{ clip.highlight_score }}</span>
         </div>
+        <div class="rating" data-rate-url="{% url 'rate-clip' clip.id %}">
+          <button type="button" class="rating__button rating__button--up" data-value="up" aria-label="Good pick" aria-pressed="{% if clip.rating is True %}true{% else %}false{% endif %}">Good</button>
+          <button type="button" class="rating__button rating__button--down" data-value="down" aria-label="Bad pick" aria-pressed="{% if clip.rating is False %}true{% else %}false{% endif %}">Bad</button>
+        </div>
         {% if clip.peak_signals %}
         <details class="card__details">
           <summary>Why this score</summary>
@@ -84,4 +88,5 @@
 
 {% block scripts %}
 <script type="module" src="{% static 'islands/timeline-scrub.js' %}"></script>
+<script src="{% static 'js/rating.js' %}" defer></script>
 {% endblock %}
