@@ -38,6 +38,10 @@
         <span class="card__meta">{{ still.video.recorded_at|date:"Y-m-d" }}</span>
         <span class="badge badge--score">{{ still.quality_score }}</span>
       </div>
+      <div class="rating" data-rate-url="{% url 'rate-still' still.id %}">
+        <button type="button" class="rating__button rating__button--up" data-value="up" aria-label="Good pick" aria-pressed="{% if still.rating is True %}true{% else %}false{% endif %}">Good</button>
+        <button type="button" class="rating__button rating__button--down" data-value="down" aria-label="Bad pick" aria-pressed="{% if still.rating is False %}true{% else %}false{% endif %}">Bad</button>
+      </div>
     </div>
   </article>
   {% endfor %}
@@ -56,4 +60,5 @@
 
 {% block scripts %}
 <script src="{% static 'js/stills-lightbox.js' %}" defer></script>
+<script src="{% static 'js/rating.js' %}" defer></script>
 {% endblock %}

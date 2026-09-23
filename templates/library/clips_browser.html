@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Clips — NakaVid{% endblock %}
 {% block heading %}Clips{% endblock %}
@@ -76,6 +77,10 @@
         </span>
         <span class="badge badge--score">{{ clip.highlight_score }}</span>
       </div>
+      <div class="rating" data-rate-url="{% url 'rate-clip' clip.id %}">
+        <button type="button" class="rating__button rating__button--up" data-value="up" aria-label="Good pick" aria-pressed="{% if clip.rating is True %}true{% else %}false{% endif %}">Good</button>
+        <button type="button" class="rating__button rating__button--down" data-value="down" aria-label="Bad pick" aria-pressed="{% if clip.rating is False %}true{% else %}false{% endif %}">Bad</button>
+      </div>
     </div>
   </article>
   {% endfor %}
@@ -84,4 +89,8 @@
 {% else %}
 <p class="empty">No clips match the current filters.</p>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/rating.js' %}" defer></script>
 {% endblock %}

@@ -94,6 +94,10 @@ def test_handle_still_extraction_creates_stills_and_inherits_tags(storage_root, 
     for index, (still, candidate) in enumerate(zip(stills, _candidates()), start=1):
         assert float(still.capture_seconds) == candidate.at_seconds
         assert still.quality_score == int(round(candidate.quality_score))
+        assert still.face_count == candidate.face_count
+        assert still.smile_count == candidate.smile_count
+        assert still.sharpness == candidate.sharpness
+        assert still.obstructed == candidate.obstructed
         assert still.scoring_params_id == params.pk
         assert still.storage_path.startswith("/nakavid/highlights/")
         assert f"__still_{index:03d}__p{params.pk}.jpg" in still.storage_path

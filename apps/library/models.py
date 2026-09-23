@@ -115,6 +115,10 @@ class Clip(models.Model):
     )
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="clips")
     tags = models.ManyToManyField(Tag, related_name="clips", blank=True)
+    # Thumbs up/down on the selection itself — was this actually a good pick?
+    # True/False/None (unrated). The starting point for checking whether the
+    # scoring formula's opinion matches a human's, not just eyeballing it.
+    rating = models.BooleanField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -168,6 +172,16 @@ class Still(models.Model):
     storage_path = models.CharField(max_length=1024, unique=True)
     capture_seconds = models.DecimalField(max_digits=8, decimal_places=3)
     quality_score = models.PositiveSmallIntegerField(default=0)
+    # The raw signals score_still_frame computed to reach quality_score —
+    # StillCandidate had these all along, they just weren't kept anywhere
+    # past scoring. Persisted so a rating can be checked against what
+    # actually drove the score, not just the final number. 0/False on stills
+    # created before these fields existed — there's no way to recover the
+    # original candidate's signals for those.
+    face_count = models.PositiveSmallIntegerField(default=0)
+    smile_count = models.PositiveSmallIntegerField(default=0)
+    sharpness = models.FloatField(default=0.0)
+    obstructed = models.BooleanField(default=False)
     # Which ScoringParams row's still_* tunables produced this — same
     # provenance/coexistence pattern as Clip.scoring_params.
     scoring_params = models.ForeignKey(
@@ -179,6 +193,8 @@ class Still(models.Model):
     )
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="stills")
     tags = models.ManyToManyField(Tag, related_name="stills", blank=True)
+    # Thumbs up/down — see Clip.rating for why boolean-or-null over a scale.
+    rating = models.BooleanField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
