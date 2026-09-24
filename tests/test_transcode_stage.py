@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,8 +17,48 @@ from apps.library.storage_paths import (
 from apps.pipeline.handlers import handle_probe, handle_transcode
 from apps.pipeline.models import Job
 from apps.pipeline.probe import ProbeResult, needs_web_transcode
+from apps.pipeline.transcode import _TONEMAP_FILTER, run_ffmpeg_web_transcode
 
 User = get_user_model()
+
+
+def _fake_run(color_transfer: str):
+    """A subprocess.run stub: ffprobe calls report color_transfer, ffmpeg calls no-op."""
+
+    def _run(command, **kwargs):
+        if command[0] == "ffprobe":
+            payload = {"streams": [{"color_transfer": color_transfer}] if color_transfer else []}
+            return type("Result", (), {"stdout": json.dumps(payload), "returncode": 0})()
+        return type("Result", (), {"stdout": "", "returncode": 0})()
+
+    return _run
+
+
+def test_run_ffmpeg_web_transcode_tonemaps_hdr_source(tmp_path):
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"fake")
+    target = tmp_path / "out" / "source__web.mp4"
+
+    with patch("apps.pipeline.transcode.subprocess.run", side_effect=_fake_run("smpte2084")) as run:
+        run_ffmpeg_web_transcode(source_path=source, target_path=target)
+
+    ffmpeg_call = run.call_args_list[-1]
+    command = ffmpeg_call.args[0] if ffmpeg_call.args else ffmpeg_call.kwargs["command"]
+    assert "-vf" in command
+    assert command[command.index("-vf") + 1] == _TONEMAP_FILTER
+
+
+def test_run_ffmpeg_web_transcode_leaves_sdr_source_untouched(tmp_path):
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"fake")
+    target = tmp_path / "out" / "source__web.mp4"
+
+    with patch("apps.pipeline.transcode.subprocess.run", side_effect=_fake_run("bt709")) as run:
+        run_ffmpeg_web_transcode(source_path=source, target_path=target)
+
+    ffmpeg_call = run.call_args_list[-1]
+    command = ffmpeg_call.args[0] if ffmpeg_call.args else ffmpeg_call.kwargs["command"]
+    assert "-vf" not in command
 
 
 @pytest.mark.parametrize(
