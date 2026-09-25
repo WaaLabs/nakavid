@@ -13,12 +13,13 @@ and a short recording's own Clip.thumbnail_path) so they regenerate, and
 queues a fresh transcode job. handle_transcode's existing chain
 (transcode -> contact sheet + score -> clip/still extraction) does the rest,
 using each video's currently active ScoringParams — the same thing a fresh
-ingest of that file would produce today. A worker (manage.py run_worker) must
-be running to actually process the queued jobs.
-
-Out of scope: a clip-extraction eval run queued against a non-default
-ScoringParams row (see enqueue_clip_extraction_eval) is not re-triggered,
-since it was never part of the automatic chain to begin with.
+ingest of that file would produce today. handle_transcode also re-cuts
+clips/stills for any *other* ScoringParams row that already has output for
+that video (a fixed/variable comparison, or last month's active row before a
+newer one took over) — those were cut from the same now-replaced playback
+file and would otherwise keep the pre-fix, washed-out (and, for a portrait
+or upside-down source, wrongly oriented) render. A worker (manage.py
+run_worker) must be running to actually process the queued jobs.
 """
 
 from __future__ import annotations
