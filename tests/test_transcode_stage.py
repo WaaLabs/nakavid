@@ -188,9 +188,7 @@ def test_handle_transcode_sets_playback_path_and_enqueues_score(storage_root, us
 
 
 @pytest.mark.django_db
-def test_handle_transcode_refreshes_clips_and_stills_from_other_scoring_params(
-    storage_root, user
-):
+def test_handle_transcode_refreshes_clips_and_stills_from_other_scoring_params(storage_root, user):
     """A re-transcode replaces the one file every clip/still is cut from.
 
     Only the active ScoringParams row's output gets refreshed through the
@@ -216,9 +214,7 @@ def test_handle_transcode_refreshes_clips_and_stills_from_other_scoring_params(
     )
     Still.objects.create(
         video=video,
-        storage_path="/nakavid/highlights/2026/07/sample/sample__still_001__p{}.jpg".format(
-            stale_params.pk
-        ),
+        storage_path=f"/nakavid/highlights/2026/07/sample/sample__still_001__p{stale_params.pk}.jpg",
         capture_seconds=0,
         scoring_params=stale_params,
         created_by=user,

@@ -156,16 +156,13 @@ def handle_transcode(job: Job) -> None:
         # energy_curve, the same trade a manual eval run already makes (see
         # enqueue_clip_extraction_eval).
         active_id = get_active_scoring_params().pk
-        stale_scoring_params_ids = (
-            set(
-                video.clips.exclude(scoring_params_id=active_id).values_list(
-                    "scoring_params_id", flat=True
-                )
+        stale_scoring_params_ids = set(
+            video.clips.exclude(scoring_params_id=active_id).values_list(
+                "scoring_params_id", flat=True
             )
-            | set(
-                video.stills.exclude(scoring_params_id=active_id).values_list(
-                    "scoring_params_id", flat=True
-                )
+        ) | set(
+            video.stills.exclude(scoring_params_id=active_id).values_list(
+                "scoring_params_id", flat=True
             )
         )
         stale_scoring_params_ids.discard(None)
