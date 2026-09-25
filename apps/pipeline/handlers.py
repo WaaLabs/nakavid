@@ -35,7 +35,11 @@ from apps.pipeline.extraction import (
 )
 from apps.pipeline.models import Job, ScoringParams
 from apps.pipeline.probe import needs_web_transcode, run_ffprobe
-from apps.pipeline.scoring import run_segment_scoring, scoring_params_from_job
+from apps.pipeline.scoring import (
+    get_active_scoring_params,
+    run_segment_scoring,
+    scoring_params_from_job,
+)
 from apps.pipeline.stills import gather_still_candidates, select_stills
 from apps.pipeline.transcode import run_ffmpeg_web_transcode
 
@@ -139,6 +143,35 @@ def handle_transcode(job: Job) -> None:
     if video.video_type == Video.VideoType.TYPE_A:
         enqueue_contact_sheet_job(video=video)
     enqueue_score_job(video=video)
+
+    if video.video_type == Video.VideoType.TYPE_A:
+        # Every existing clip and still, whichever ScoringParams row produced
+        # it, was cut from the file this job just replaced (_playback_file_path
+        # always resolves to it). enqueue_score_job above only refreshes the
+        # active row's output; any other row that already has clips/stills
+        # here — a fixed/variable comparison, or last month's active row
+        # before a newer one took over — would otherwise keep showing
+        # whatever the previous rendition looked like. Re-cutting doesn't
+        # need a fresh score first: extraction reads the video's existing
+        # energy_curve, the same trade a manual eval run already makes (see
+        # enqueue_clip_extraction_eval).
+        active_id = get_active_scoring_params().pk
+        stale_scoring_params_ids = (
+            set(
+                video.clips.exclude(scoring_params_id=active_id).values_list(
+                    "scoring_params_id", flat=True
+                )
+            )
+            | set(
+                video.stills.exclude(scoring_params_id=active_id).values_list(
+                    "scoring_params_id", flat=True
+                )
+            )
+        )
+        stale_scoring_params_ids.discard(None)
+        for scoring_params_id in stale_scoring_params_ids:
+            enqueue_clip_extraction_job(video=video, scoring_params_id=scoring_params_id)
+            enqueue_still_extraction_job(video=video, scoring_params_id=scoring_params_id)
 
 
 def handle_contact_sheet(job: Job) -> None:

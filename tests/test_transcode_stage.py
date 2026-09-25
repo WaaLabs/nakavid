@@ -8,14 +8,14 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from apps.library.models import Video
+from apps.library.models import Clip, Still, Video
 from apps.library.storage_paths import (
     build_originals_relative_path,
     build_playback_relative_path,
     to_absolute_storage_path,
 )
 from apps.pipeline.handlers import handle_probe, handle_transcode
-from apps.pipeline.models import Job
+from apps.pipeline.models import Job, ScoringParams
 from apps.pipeline.probe import ProbeResult, needs_web_transcode
 from apps.pipeline.transcode import _TONEMAP_FILTER, run_ffmpeg_web_transcode
 
@@ -185,3 +185,89 @@ def test_handle_transcode_sets_playback_path_and_enqueues_score(storage_root, us
     )
     transcode.assert_called_once()
     assert video.jobs.filter(job_type=Job.JobType.SCORE).exists()
+
+
+@pytest.mark.django_db
+def test_handle_transcode_refreshes_clips_and_stills_from_other_scoring_params(
+    storage_root, user
+):
+    """A re-transcode replaces the one file every clip/still is cut from.
+
+    Only the active ScoringParams row's output gets refreshed through the
+    normal score -> extraction chain (enqueue_score_job always scores with
+    the active row). Any other row that already has clips/stills here —
+    e.g. a fixed/variable comparison, or a row that used to be active before
+    a newer one took over — needs its own re-queue, or it keeps pointing at
+    whatever the previous (possibly washed-out or wrongly oriented) rendition
+    looked like. See backfill_hdr_color, which surfaced this.
+    """
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    stale_params = ScoringParams.objects.create()
+    active_params = ScoringParams.objects.create()
+    assert active_params.pk > stale_params.pk
+
+    Clip.objects.create(
+        video=video,
+        storage_path="/nakavid/highlights/2026/07/sample/sample__clip_001.mp4",
+        start_seconds=0,
+        end_seconds=4,
+        scoring_params=stale_params,
+        created_by=user,
+    )
+    Still.objects.create(
+        video=video,
+        storage_path="/nakavid/highlights/2026/07/sample/sample__still_001__p{}.jpg".format(
+            stale_params.pk
+        ),
+        capture_seconds=0,
+        scoring_params=stale_params,
+        created_by=user,
+    )
+    job = Job.objects.create(
+        video=video, job_type=Job.JobType.TRANSCODE, status=Job.Status.PROCESSING
+    )
+
+    with patch("apps.pipeline.handlers.run_ffmpeg_web_transcode"):
+        handle_transcode(job)
+
+    stale_clip_jobs = video.jobs.filter(
+        job_type=Job.JobType.CLIP_EXTRACTION, scoring_params=stale_params
+    )
+    stale_still_jobs = video.jobs.filter(
+        job_type=Job.JobType.STILL_EXTRACTION, scoring_params=stale_params
+    )
+    assert stale_clip_jobs.exists()
+    assert stale_still_jobs.exists()
+    # The active row's clips/stills come from the score stage this job
+    # queued, not a direct re-queue here — no double-processing.
+    assert not video.jobs.filter(
+        job_type=Job.JobType.CLIP_EXTRACTION, scoring_params=active_params
+    ).exists()
+    assert not video.jobs.filter(
+        job_type=Job.JobType.STILL_EXTRACTION, scoring_params=active_params
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_handle_transcode_skips_refresh_when_only_active_scoring_params_has_output(
+    storage_root, user
+):
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    active_params = ScoringParams.objects.create()
+    Clip.objects.create(
+        video=video,
+        storage_path="/nakavid/highlights/2026/07/sample/sample__clip_001.mp4",
+        start_seconds=0,
+        end_seconds=4,
+        scoring_params=active_params,
+        created_by=user,
+    )
+    job = Job.objects.create(
+        video=video, job_type=Job.JobType.TRANSCODE, status=Job.Status.PROCESSING
+    )
+
+    with patch("apps.pipeline.handlers.run_ffmpeg_web_transcode"):
+        handle_transcode(job)
+
+    assert not video.jobs.filter(job_type=Job.JobType.CLIP_EXTRACTION).exists()
+    assert not video.jobs.filter(job_type=Job.JobType.STILL_EXTRACTION).exists()
