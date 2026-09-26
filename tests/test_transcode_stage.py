@@ -61,6 +61,69 @@ def test_run_ffmpeg_web_transcode_leaves_sdr_source_untouched(tmp_path):
     assert "-vf" not in command
 
 
+def test_run_ffmpeg_web_transcode_always_disables_ffmpeg_autorotate(tmp_path):
+    """Rotation must depend only on rotation_degrees, never ffmpeg's own guess.
+
+    Confirmed on real footage that ffmpeg's autorotate and the source's own
+    display-matrix rotation value can disagree — with autorotate on, a
+    rotation_override_degrees correction would have no effect, since ffmpeg
+    would keep re-deriving its own answer from the file it's still reading.
+    """
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"fake")
+    target = tmp_path / "out" / "source__web.mp4"
+
+    with patch("apps.pipeline.transcode.subprocess.run", side_effect=_fake_run("bt709")) as run:
+        run_ffmpeg_web_transcode(source_path=source, target_path=target)
+
+    ffmpeg_call = run.call_args_list[-1]
+    command = ffmpeg_call.args[0] if ffmpeg_call.args else ffmpeg_call.kwargs["command"]
+    assert "-noautorotate" in command
+
+
+@pytest.mark.parametrize(
+    "rotation_degrees, expected_filter",
+    [
+        (0, None),
+        (90, "transpose=1"),
+        (180, "hflip,vflip"),
+        (270, "transpose=2"),
+        (450, "transpose=1"),  # 450 % 360 == 90 — an out-of-range value is normalized
+    ],
+)
+def test_run_ffmpeg_web_transcode_applies_explicit_rotation_filter(
+    tmp_path, rotation_degrees, expected_filter
+):
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"fake")
+    target = tmp_path / "out" / "source__web.mp4"
+
+    with patch("apps.pipeline.transcode.subprocess.run", side_effect=_fake_run("bt709")) as run:
+        run_ffmpeg_web_transcode(
+            source_path=source, target_path=target, rotation_degrees=rotation_degrees
+        )
+
+    ffmpeg_call = run.call_args_list[-1]
+    command = ffmpeg_call.args[0] if ffmpeg_call.args else ffmpeg_call.kwargs["command"]
+    if expected_filter is None:
+        assert "-vf" not in command
+    else:
+        assert command[command.index("-vf") + 1] == expected_filter
+
+
+def test_run_ffmpeg_web_transcode_combines_rotation_and_tonemap_filters(tmp_path):
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"fake")
+    target = tmp_path / "out" / "source__web.mp4"
+
+    with patch("apps.pipeline.transcode.subprocess.run", side_effect=_fake_run("smpte2084")) as run:
+        run_ffmpeg_web_transcode(source_path=source, target_path=target, rotation_degrees=90)
+
+    ffmpeg_call = run.call_args_list[-1]
+    command = ffmpeg_call.args[0] if ffmpeg_call.args else ffmpeg_call.kwargs["command"]
+    assert command[command.index("-vf") + 1] == f"transpose=1,{_TONEMAP_FILTER}"
+
+
 @pytest.mark.parametrize(
     "codec_name, pixel_format, expected",
     [
@@ -144,6 +207,30 @@ def test_handle_probe_enqueues_transcode_for_hevc(storage_root, user):
 
 
 @pytest.mark.django_db
+def test_handle_probe_persists_rotation_degrees(storage_root, user):
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    job = Job.objects.create(video=video, job_type=Job.JobType.PROBE, status=Job.Status.PROCESSING)
+
+    with patch(
+        "apps.pipeline.handlers.run_ffprobe",
+        return_value=ProbeResult(
+            duration_seconds=120,
+            orientation=Video.Orientation.PORTRAIT,
+            video_codec="hevc",
+            width=1080,
+            height=1920,
+            pixel_format="yuv420p10le",
+            rotation=270,
+        ),
+    ):
+        handle_probe(job)
+
+    video.refresh_from_db()
+    assert video.rotation_degrees == 270
+    assert video.rotation_override_degrees is None
+
+
+@pytest.mark.django_db
 def test_handle_probe_skips_transcode_for_browser_safe_h264(storage_root, user):
     video = _create_type_a_video(storage_root=storage_root, user=user, filename="sample.mp4")
     job = Job.objects.create(video=video, job_type=Job.JobType.PROBE, status=Job.Status.PROCESSING)
@@ -185,6 +272,51 @@ def test_handle_transcode_sets_playback_path_and_enqueues_score(storage_root, us
     )
     transcode.assert_called_once()
     assert video.jobs.filter(job_type=Job.JobType.SCORE).exists()
+
+
+@pytest.mark.django_db
+def test_handle_transcode_passes_probed_rotation_by_default(storage_root, user):
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    video.rotation_degrees = 270
+    video.width, video.height = 1080, 1920
+    video.save(update_fields=["rotation_degrees", "width", "height"])
+    job = Job.objects.create(
+        video=video, job_type=Job.JobType.TRANSCODE, status=Job.Status.PROCESSING
+    )
+
+    with patch("apps.pipeline.handlers.run_ffmpeg_web_transcode") as transcode:
+        handle_transcode(job)
+
+    assert transcode.call_args.kwargs["rotation_degrees"] == 270
+    video.refresh_from_db()
+    assert (video.width, video.height) == (1080, 1920)
+
+
+@pytest.mark.django_db
+def test_handle_transcode_prefers_rotation_override_and_corrects_dimensions(storage_root, user):
+    """The scenario this whole mechanism exists for: the camera's rotation
+    tag is wrong (confirmed on real footage), so the probed value alone
+    can't be trusted. Setting an override must actually change what ffmpeg
+    does, not just what's recorded — and since the override disagrees with
+    the probed value on whether a quarter turn is needed, the previously
+    swapped width/height need un-swapping too.
+    """
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    video.rotation_degrees = 270
+    video.rotation_override_degrees = 180
+    video.width, video.height = 1080, 1920
+    video.save(update_fields=["rotation_degrees", "rotation_override_degrees", "width", "height"])
+    job = Job.objects.create(
+        video=video, job_type=Job.JobType.TRANSCODE, status=Job.Status.PROCESSING
+    )
+
+    with patch("apps.pipeline.handlers.run_ffmpeg_web_transcode") as transcode:
+        handle_transcode(job)
+
+    assert transcode.call_args.kwargs["rotation_degrees"] == 180
+    video.refresh_from_db()
+    assert (video.width, video.height) == (1920, 1080)
+    assert video.orientation == Video.Orientation.LANDSCAPE
 
 
 @pytest.mark.django_db

@@ -34,6 +34,27 @@ class Video(models.Model):
     video_codec = models.CharField(max_length=64, blank=True)
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)
+
+    class Rotation(models.IntegerChoices):
+        NONE = 0, "0°"
+        CW_90 = 90, "90° clockwise"
+        HALF_TURN = 180, "180°"
+        CW_270 = 270, "270° clockwise (90° counter-clockwise)"
+
+    # Clockwise rotation the transcode stage applies to the coded frame, read
+    # from the source's display-matrix side data (see probe.rotation_degrees)
+    # — not just informational: run_ffmpeg_web_transcode applies this itself
+    # and disables ffmpeg's own autorotate, so behaviour doesn't depend on
+    # ffmpeg's opaque internal guess.
+    rotation_degrees = models.PositiveSmallIntegerField(choices=Rotation.choices, default=0)
+    # Some cameras write a rotation tag that doesn't match how the footage
+    # actually needs to display — confirmed on real footage, not a
+    # hypothetical: rotation_degrees alone can't be trusted as ground truth.
+    # Set this to correct it, then re-queue a transcode job; the corrected
+    # frame is what every clip, thumbnail and still downstream is cut from.
+    rotation_override_degrees = models.PositiveSmallIntegerField(
+        choices=Rotation.choices, null=True, blank=True
+    )
     is_private = models.BooleanField(default=True)
     # Set when a video was pulled from Immich. Immich's asset id is the only
     # stable identity across re-runs — two assets can share a filename.
@@ -63,6 +84,18 @@ class Video(models.Model):
     def is_long_recording(self) -> bool:
         """Long recordings get split into clips; short ones are used as they are."""
         return self.video_type == Video.VideoType.TYPE_A
+
+    @property
+    def effective_rotation_degrees(self) -> int:
+        """What the transcode stage should actually apply.
+
+        The override wins whenever it's set — that's the whole point of it:
+        rotation_degrees is what the source *claims*, which a real camera can
+        get wrong.
+        """
+        if self.rotation_override_degrees is not None:
+            return self.rotation_override_degrees
+        return self.rotation_degrees
 
     def __str__(self) -> str:
         return self.title

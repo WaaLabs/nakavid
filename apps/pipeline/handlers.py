@@ -34,7 +34,7 @@ from apps.pipeline.extraction import (
     select_clip_segments,
 )
 from apps.pipeline.models import Job, ScoringParams
-from apps.pipeline.probe import needs_web_transcode, run_ffprobe
+from apps.pipeline.probe import needs_web_transcode, orientation_from_dimensions, run_ffprobe
 from apps.pipeline.scoring import (
     get_active_scoring_params,
     run_segment_scoring,
@@ -80,6 +80,7 @@ def handle_probe(job: Job) -> None:
         video.video_codec = probe_result.video_codec
         video.width = probe_result.width
         video.height = probe_result.height
+        video.rotation_degrees = probe_result.rotation
         video.save(
             update_fields=[
                 "duration_seconds",
@@ -87,6 +88,7 @@ def handle_probe(job: Job) -> None:
                 "video_codec",
                 "width",
                 "height",
+                "rotation_degrees",
                 "updated_at",
             ]
         )
@@ -121,10 +123,24 @@ def handle_transcode(job: Job) -> None:
     run_ffmpeg_web_transcode(
         source_path=_video_file_path(video),
         target_path=target_file_path,
+        rotation_degrees=video.effective_rotation_degrees,
     )
 
     video.playback_path = to_absolute_storage_path(storage_root, relative_playback)
-    video.save(update_fields=["playback_path", "updated_at"])
+    update_fields = ["playback_path", "updated_at"]
+
+    # width/height/orientation were set at probe time from rotation_degrees.
+    # An override that disagrees with probe on whether a quarter turn is
+    # needed makes those stale — swapping is enough to correct them without
+    # a re-probe, since they already reflect one rotation's swap-or-not.
+    probed_swaps = video.rotation_degrees % 180 == 90
+    effective_swaps = video.effective_rotation_degrees % 180 == 90
+    if probed_swaps != effective_swaps and video.width and video.height:
+        video.width, video.height = video.height, video.width
+        video.orientation = orientation_from_dimensions(width=video.width, height=video.height)
+        update_fields += ["width", "height", "orientation"]
+
+    video.save(update_fields=update_fields)
 
     if video.video_type == Video.VideoType.TYPE_B:
         # A short recording is its own clip, and that clip pointed at the

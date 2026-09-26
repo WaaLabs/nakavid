@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from apps.library.models import Clip, Combine, Still, Tag, TagCategory, Video
+from apps.pipeline.enqueue import enqueue_transcode_job
 
 
 @admin.register(TagCategory)
@@ -18,12 +19,30 @@ class TagAdmin(admin.ModelAdmin):
     autocomplete_fields = ("category",)
 
 
+@admin.action(description="Re-queue transcode (picks up a rotation override)")
+def requeue_transcode(modeladmin, request, queryset):
+    for video in queryset:
+        enqueue_transcode_job(video=video)
+    modeladmin.message_user(request, f"Queued a transcode job for {queryset.count()} video(s).")
+
+
 @admin.register(Video)
 class VideoAdmin(admin.ModelAdmin):
-    list_display = ("title", "video_type", "class_name", "theme", "recorded_at")
+    list_display = (
+        "title",
+        "video_type",
+        "class_name",
+        "theme",
+        "recorded_at",
+        "rotation_degrees",
+        "rotation_override_degrees",
+    )
     list_filter = ("video_type", "class_name")
+    list_editable = ("rotation_override_degrees",)
     search_fields = ("title", "class_name", "theme")
     filter_horizontal = ("tags",)
+    readonly_fields = ("rotation_degrees",)
+    actions = (requeue_transcode,)
 
 
 @admin.register(Clip)
