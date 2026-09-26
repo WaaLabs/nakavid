@@ -92,6 +92,15 @@ def run_ffmpeg_web_transcode(
     passing 0 for a source ffmpeg would otherwise autorotate leaves it as
     coded, which only matters for a source whose metadata is wrong to begin
     with — precisely the case this exists to let someone correct.
+
+    -display_rotation:v 0 matters just as much as the filter above: mapping
+    the source stream (-map 0:v:0) carries its display-matrix side data
+    through to the output by default, so without this, the output would keep
+    declaring the source's *original* rotation on top of pixels this
+    function already rotated — confirmed on real footage, every reader that
+    respects that tag (every browser, and our own run_ffmpeg_trim /
+    run_ffmpeg_thumbnail, neither of which pass -noautorotate) would rotate a
+    second time and land on the wrong orientation despite correct pixels.
     """
     target_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
@@ -101,6 +110,8 @@ def run_ffmpeg_web_transcode(
         "-loglevel",
         "error",
         "-noautorotate",
+        "-display_rotation:v",
+        "0",
         "-i",
         str(source_path),
         "-map",

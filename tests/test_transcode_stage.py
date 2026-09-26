@@ -81,6 +81,26 @@ def test_run_ffmpeg_web_transcode_always_disables_ffmpeg_autorotate(tmp_path):
     assert "-noautorotate" in command
 
 
+def test_run_ffmpeg_web_transcode_clears_output_rotation_metadata(tmp_path):
+    """-map propagates the source's display-matrix side data by default —
+    without this, the output would keep declaring the *source's original*
+    rotation on top of pixels this function already rotated. Confirmed on
+    real footage: every reader that respects that tag (every browser, and
+    our own run_ffmpeg_trim / run_ffmpeg_thumbnail) would then rotate a
+    second time and land sideways despite correct pixels.
+    """
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"fake")
+    target = tmp_path / "out" / "source__web.mp4"
+
+    with patch("apps.pipeline.transcode.subprocess.run", side_effect=_fake_run("bt709")) as run:
+        run_ffmpeg_web_transcode(source_path=source, target_path=target, rotation_degrees=180)
+
+    ffmpeg_call = run.call_args_list[-1]
+    command = ffmpeg_call.args[0] if ffmpeg_call.args else ffmpeg_call.kwargs["command"]
+    assert command[command.index("-display_rotation:v") + 1] == "0"
+
+
 @pytest.mark.parametrize(
     "rotation_degrees, expected_filter",
     [
