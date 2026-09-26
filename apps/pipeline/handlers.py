@@ -512,7 +512,7 @@ def handle_score(job: Job) -> None:
         return
 
     result = run_segment_scoring(
-        video_path=_video_file_path(video),
+        video_path=_playback_file_path(video),
         params=params,
         duration_seconds=video.duration_seconds,
     )
