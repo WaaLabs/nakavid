@@ -215,6 +215,40 @@ def test_handle_score_persists_energy_curve(storage_root, user):
 
 
 @pytest.mark.django_db
+def test_handle_score_reads_playback_file_not_raw_source(storage_root, user):
+    """Every other pixel-reading stage (contact sheet, clip trim, still
+    extraction, short-recording scoring) already reads the browser-safe,
+    tone-mapped, correctly-rotated playback file, not the raw source — this
+    was the one holdout, and it matters: face/smile detection run against a
+    raw HDR or misrotated source is measurably less accurate than against
+    the corrected rendition (confirmed on real footage), degrading the very
+    signals clip selection depends on.
+    """
+    video = _create_type_a_video(storage_root=storage_root, user=user)
+    video.playback_path = video.source_path.replace("lesson.mp4", "lesson__web.mp4")
+    video.save(update_fields=["playback_path"])
+    params = ScoringParams.objects.get()
+    job = Job.objects.create(
+        video=video,
+        job_type=Job.JobType.SCORE,
+        status=Job.Status.PROCESSING,
+        scoring_params=params,
+    )
+    scoring_result = SegmentScoringResult(energy_curve=[], highlight_score=0)
+
+    with (
+        patch(
+            "apps.pipeline.handlers.run_segment_scoring", return_value=scoring_result
+        ) as run_scoring,
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail"),
+    ):
+        handle_score(job)
+
+    called_path = run_scoring.call_args.kwargs["video_path"]
+    assert called_path.name == "lesson__web.mp4"
+
+
+@pytest.mark.django_db
 def test_rescoring_replaces_the_curve_and_leaves_clips_alone(storage_root, user):
     """A re-score overwrites the video's curve without touching extracted clips."""
     video = _create_type_a_video(storage_root=storage_root, user=user)
