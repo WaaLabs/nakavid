@@ -24,6 +24,21 @@ _TONEMAP_FILTER = (
     "tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
 )
 
+# Explicit transpose per clockwise rotation, keyed the same way as
+# Video.rotation_degrees/rotation_override_degrees. Applied instead of
+# ffmpeg's own autorotate (disabled below with -noautorotate) so the result
+# only ever depends on this value, never on ffmpeg's own reading of the
+# source's display-matrix side data — confirmed on real footage that the two
+# can disagree, and when they do, ffmpeg's guess is not more trustworthy than
+# ours; the difference is ours can be corrected (Video.rotation_override_degrees)
+# and ffmpeg's can't.
+_ROTATION_FILTERS = {
+    0: "",
+    90: "transpose=1",
+    180: "hflip,vflip",
+    270: "transpose=2",
+}
+
 
 def probe_color_transfer(source_path: Path) -> str:
     """The source's tagged color transfer function, or "" if unreadable.
@@ -60,7 +75,9 @@ def probe_color_transfer(source_path: Path) -> str:
     return str(streams[0].get("color_transfer") or "")
 
 
-def run_ffmpeg_web_transcode(*, source_path: Path, target_path: Path) -> None:
+def run_ffmpeg_web_transcode(
+    *, source_path: Path, target_path: Path, rotation_degrees: int = 0
+) -> None:
     """Re-encode a source into a browser-safe H.264 8-bit 4:2:0 MP4.
 
     Maps only the first video and (optional) audio streams so iPhone metadata
@@ -68,6 +85,13 @@ def run_ffmpeg_web_transcode(*, source_path: Path, target_path: Path) -> None:
     writes a faststart MP4 so playback can start before the whole file loads.
     HDR (PQ/HLG) sources are tone-mapped to SDR first — see
     _HDR_TRANSFER_FUNCTIONS.
+
+    rotation_degrees is Video.effective_rotation_degrees — the clockwise
+    rotation to bake into the output pixels. ffmpeg's own autorotate is
+    disabled (-noautorotate) so this is the only thing that decides rotation;
+    passing 0 for a source ffmpeg would otherwise autorotate leaves it as
+    coded, which only matters for a source whose metadata is wrong to begin
+    with — precisely the case this exists to let someone correct.
     """
     target_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
@@ -76,6 +100,7 @@ def run_ffmpeg_web_transcode(*, source_path: Path, target_path: Path) -> None:
         "-hide_banner",
         "-loglevel",
         "error",
+        "-noautorotate",
         "-i",
         str(source_path),
         "-map",
@@ -83,8 +108,11 @@ def run_ffmpeg_web_transcode(*, source_path: Path, target_path: Path) -> None:
         "-map",
         "0:a:0?",
     ]
+    filters = [f for f in (_ROTATION_FILTERS.get(rotation_degrees % 360, ""),) if f]
     if probe_color_transfer(source_path) in _HDR_TRANSFER_FUNCTIONS:
-        command += ["-vf", _TONEMAP_FILTER]
+        filters.append(_TONEMAP_FILTER)
+    if filters:
+        command += ["-vf", ",".join(filters)]
     command += [
         "-c:v",
         "libx264",
