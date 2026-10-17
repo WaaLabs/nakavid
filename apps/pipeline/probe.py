@@ -30,12 +30,25 @@ class ProbeResult:
 _BROWSER_SAFE_VIDEO_CODEC = "h264"
 _BROWSER_SAFE_PIXEL_FORMATS = frozenset({"", "yuv420p", "yuvj420p"})
 
+# AGENTS.md's domain language: Type A is a long recording (40-90+ min), Type B
+# is an in-the-moment clip (<5 min). Anything under this cutoff has nothing to
+# split, so an ingest path can classify by length alone instead of asking an
+# operator to say which stream a file belongs in.
+SHORT_RECORDING_MAX_SECONDS = 5 * 60
+
 
 def needs_web_transcode(*, codec_name: str, pixel_format: str) -> bool:
     """True when the source stream is not directly playable in a browser."""
     if codec_name != _BROWSER_SAFE_VIDEO_CODEC:
         return True
     return pixel_format not in _BROWSER_SAFE_PIXEL_FORMATS
+
+
+def classify_video_type_from_duration(duration_seconds: float) -> str:
+    """Long recording vs short recording, by length alone."""
+    if duration_seconds < SHORT_RECORDING_MAX_SECONDS:
+        return Video.VideoType.TYPE_B
+    return Video.VideoType.TYPE_A
 
 
 def orientation_from_dimensions(*, width: int, height: int) -> str:

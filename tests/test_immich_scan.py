@@ -10,7 +10,6 @@ from django.urls import reverse
 
 from apps.library.immich import ImmichError, immich_is_configured
 from apps.library.immich_ingest import DEFAULT_IMPORTED_TAG, DEFAULT_TAG
-from apps.library.models import Video
 from apps.pipeline.enqueue import enqueue_ingest_job
 from apps.pipeline.handlers import handle_ingest
 from apps.pipeline.models import Job
@@ -47,7 +46,7 @@ def test_handle_ingest_attributes_the_scan_to_the_single_superuser():
 
 
 def test_run_immich_ingest_defaults_match_the_cli_defaults():
-    """handle_ingest leans entirely on these — nothing else pins tag/type/orientation."""
+    """handle_ingest leans entirely on these — nothing else pins tag/type."""
     import inspect
 
     from apps.library.immich_ingest import run_immich_ingest
@@ -58,8 +57,10 @@ def test_run_immich_ingest_defaults_match_the_cli_defaults():
     }
     assert defaults["tag"] == DEFAULT_TAG
     assert defaults["imported_tag"] == DEFAULT_IMPORTED_TAG
-    assert defaults["video_type"] == Video.VideoType.TYPE_A
-    assert defaults["orientation"] == Video.Orientation.LANDSCAPE
+    # None: classify each video long/short by its own probed duration, rather
+    # than pinning every asset a scan pulls to one type.
+    assert defaults["video_type"] is None
+    assert "orientation" not in defaults
 
 
 @pytest.mark.django_db
