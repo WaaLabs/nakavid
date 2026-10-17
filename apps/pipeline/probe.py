@@ -6,9 +6,8 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-from django.conf import settings
-
 from apps.library.models import Video
+from apps.pipeline.models import IngestSettings
 
 
 class ProbeError(Exception):
@@ -43,13 +42,15 @@ def needs_web_transcode(*, codec_name: str, pixel_format: str) -> bool:
 def classify_video_type_from_duration(duration_seconds: float) -> str:
     """Long recording vs short recording, by length alone.
 
-    The cutoff (settings.NAKAVID_SHORT_RECORDING_MAX_SECONDS) is operator
-    config, not a scoring parameter — it decides which ingest stream a file
-    belongs in, not how it's scored once it's in. AGENTS.md's domain
-    language — Type A is 40-90+ min, Type B is "<5 min" — is this setting's
-    default, not a fixed rule.
+    The cutoff (IngestSettings.load().short_recording_max_seconds) is
+    operator config, editable from Django admin — it decides which ingest
+    stream a file belongs in, not how it's scored once it's in, which is why
+    it isn't a ScoringParams field. AGENTS.md's domain language — Type A is
+    40-90+ min, Type B is "<5 min" — is this setting's default, not a fixed
+    rule.
     """
-    if duration_seconds < settings.NAKAVID_SHORT_RECORDING_MAX_SECONDS:
+    cutoff = IngestSettings.load().short_recording_max_seconds
+    if duration_seconds < cutoff:
         return Video.VideoType.TYPE_B
     return Video.VideoType.TYPE_A
 

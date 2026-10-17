@@ -12,7 +12,7 @@ from django.utils import timezone
 from apps.library.models import Clip, Video
 from apps.library.storage_paths import build_originals_relative_path, to_absolute_storage_path
 from apps.pipeline.handlers import handle_probe
-from apps.pipeline.models import Job
+from apps.pipeline.models import IngestSettings, Job
 from apps.pipeline.probe import (
     ProbeError,
     ProbeResult,
@@ -60,17 +60,22 @@ def test_orientation_from_dimensions():
     assert orientation_from_dimensions(width=1080, height=1080) == Video.Orientation.SQUARE
 
 
-def test_classify_video_type_from_duration_uses_the_default_cutoff(settings):
-    assert settings.NAKAVID_SHORT_RECORDING_MAX_SECONDS == 300
+@pytest.mark.django_db
+def test_classify_video_type_from_duration_uses_the_default_cutoff():
+    assert IngestSettings.load().short_recording_max_seconds == 300
     assert classify_video_type_from_duration(299) == Video.VideoType.TYPE_B
     assert classify_video_type_from_duration(300) == Video.VideoType.TYPE_A
 
 
-def test_classify_video_type_from_duration_respects_a_configured_cutoff(settings):
-    """The cutoff is operator config, not a fixed rule — see settings.py."""
-    settings.NAKAVID_SHORT_RECORDING_MAX_SECONDS = 600
+@pytest.mark.django_db
+def test_classify_video_type_from_duration_respects_a_configured_cutoff():
+    """The cutoff is operator config, edited from Django admin — not a fixed rule."""
+    settings_row = IngestSettings.load()
+    settings_row.short_recording_max_seconds = 600
+    settings_row.save()
 
     assert classify_video_type_from_duration(450) == Video.VideoType.TYPE_B
+    assert classify_video_type_from_duration(600) == Video.VideoType.TYPE_A
     assert classify_video_type_from_duration(600) == Video.VideoType.TYPE_A
 
 

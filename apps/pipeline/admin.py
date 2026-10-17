@@ -1,8 +1,9 @@
 from django.contrib import admin
 from django.db.models import BooleanField, ExpressionWrapper, Q, QuerySet, Subquery
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponseRedirect
+from django.urls import reverse
 
-from apps.pipeline.models import ScoringParams
+from apps.pipeline.models import IngestSettings, ScoringParams
 
 
 @admin.register(ScoringParams)
@@ -140,3 +141,31 @@ class ScoringParamsAdmin(admin.ModelAdmin):
     def is_active(self, obj: ScoringParams) -> bool:
         """The highest-pk row is what new score jobs use."""
         return bool(obj.active_flag)
+
+
+@admin.register(IngestSettings)
+class IngestSettingsAdmin(admin.ModelAdmin):
+    """Edit the one IngestSettings row — no shell, no .env, no restart.
+
+    There is only ever one row (IngestSettings.load() always returns pk=1),
+    so the changelist is pointless; visiting it loads/creates that row and
+    redirects straight to its change form. Add and delete are disabled so
+    nothing creates a second row to go stale.
+    """
+
+    fields = ("short_recording_max_seconds", "updated_at")
+    readonly_fields = ("updated_at",)
+
+    def changelist_view(self, request: HttpRequest, extra_context=None) -> HttpResponseRedirect:
+        settings_row = IngestSettings.load()
+        return HttpResponseRedirect(
+            reverse("admin:pipeline_ingestsettings_change", args=[settings_row.pk])
+        )
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: HttpRequest, obj: IngestSettings | None = None
+    ) -> bool:
+        return False

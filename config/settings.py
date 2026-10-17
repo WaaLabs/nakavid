@@ -85,10 +85,3 @@ NAKAVID_JOB_CLAIM_TIMEOUT_MINUTES = int(os.getenv("NAKAVID_JOB_CLAIM_TIMEOUT_MIN
 # refuses a host that does not resolve to a private address.
 NAKAVID_IMMICH_URL = os.getenv("NAKAVID_IMMICH_URL", "")
 NAKAVID_IMMICH_API_KEY = os.getenv("NAKAVID_IMMICH_API_KEY", "")
-
-# An ingested video at or above this length is a long recording (Type A,
-# split into clips); under it, a short recording (Type B, already its own
-# clip). Default matches AGENTS.md's domain language: Type B is "<5 min".
-NAKAVID_SHORT_RECORDING_MAX_SECONDS = int(
-    os.getenv("NAKAVID_SHORT_RECORDING_MAX_SECONDS", str(5 * 60))
-)
