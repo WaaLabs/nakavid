@@ -153,7 +153,12 @@ class IngestSettingsAdmin(admin.ModelAdmin):
     nothing creates a second row to go stale.
     """
 
-    fields = ("short_recording_max_seconds", "updated_at")
+    fields = (
+        "short_recording_max_seconds",
+        "immich_add_tag",
+        "immich_imported_tag",
+        "updated_at",
+    )
     readonly_fields = ("updated_at",)
 
     def changelist_view(self, request: HttpRequest, extra_context=None) -> HttpResponseRedirect:

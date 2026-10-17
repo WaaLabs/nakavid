@@ -9,7 +9,6 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from apps.library.immich import ImmichError, immich_is_configured
-from apps.library.immich_ingest import DEFAULT_IMPORTED_TAG, DEFAULT_TAG
 from apps.pipeline.enqueue import enqueue_ingest_job
 from apps.pipeline.handlers import handle_ingest
 from apps.pipeline.models import Job
@@ -46,7 +45,12 @@ def test_handle_ingest_attributes_the_scan_to_the_single_superuser():
 
 
 def test_run_immich_ingest_defaults_match_the_cli_defaults():
-    """handle_ingest leans entirely on these — nothing else pins tag/type."""
+    """handle_ingest leans entirely on these — nothing else pins tag/type.
+
+    All three are None: resolved from IngestSettings (editable at
+    /admin/pipeline/ingestsettings/) rather than pinned in code, so the web
+    button and a bare CLI run both follow whatever's configured there.
+    """
     import inspect
 
     from apps.library.immich_ingest import run_immich_ingest
@@ -55,10 +59,8 @@ def test_run_immich_ingest_defaults_match_the_cli_defaults():
         name: param.default
         for name, param in inspect.signature(run_immich_ingest).parameters.items()
     }
-    assert defaults["tag"] == DEFAULT_TAG
-    assert defaults["imported_tag"] == DEFAULT_IMPORTED_TAG
-    # None: classify each video long/short by its own probed duration, rather
-    # than pinning every asset a scan pulls to one type.
+    assert defaults["tag"] is None
+    assert defaults["imported_tag"] is None
     assert defaults["video_type"] is None
     assert "orientation" not in defaults
 

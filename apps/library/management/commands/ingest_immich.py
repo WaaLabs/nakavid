@@ -2,12 +2,13 @@
 
 Footage already arrives in Immich by phone backup, so this is usually the
 shortest path from filming something to having it scored — no second upload.
-Tag whatever is ready to import with Nakavid/add in Immich, then run this;
-only videos carrying that tag are pulled. Once a video is safely imported,
-its tag moves from Nakavid/add to Nakavid/imported, so it doesn't sit there
-looking ready to pull all over again on the next run. Long recordings and
-short ones carry the same tag — each is classified long vs short by its own
-probed duration, not by which button or flag you used to pull it.
+Tag whatever is ready to import with the configured "add" tag in Immich
+(Settings -> Ingest settings in the web UI; Nakavid/add by default), then
+run this; only videos carrying that tag are pulled. Once a video is safely
+imported, its tag moves to the configured "imported" tag, so it doesn't sit
+there looking ready to pull all over again on the next run. Long recordings
+and short ones carry the same tag — each is classified long vs short by its
+own probed duration, not by which button or flag you used to pull it.
 
 The same pull also runs as a background job when triggered from the web
 UI's "Scan Immich" button — see apps.library.immich_ingest.run_immich_ingest,
@@ -20,12 +21,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.library.immich import ImmichError
-from apps.library.immich_ingest import (
-    DEFAULT_IMPORTED_TAG,
-    DEFAULT_TAG,
-    resolve_default_user,
-    run_immich_ingest,
-)
+from apps.library.immich_ingest import resolve_default_user, run_immich_ingest
 from apps.library.models import Video
 
 
@@ -35,15 +31,18 @@ class Command(BaseCommand):
     def add_arguments(self, parser) -> None:
         parser.add_argument(
             "--tag",
-            default=DEFAULT_TAG,
-            help=f"Immich tag (full path) to pull videos from. Default: {DEFAULT_TAG!r}.",
+            default=None,
+            help=(
+                "Immich tag (full path) to pull videos from. Default: the configured "
+                "'add' tag (Settings -> Ingest settings in the web UI)."
+            ),
         )
         parser.add_argument(
             "--imported-tag",
-            default=DEFAULT_IMPORTED_TAG,
+            default=None,
             help=(
                 "Immich tag (full path) to move a video to once it's imported. "
-                f"Default: {DEFAULT_IMPORTED_TAG!r}."
+                "Default: the configured 'imported' tag (Settings -> Ingest settings)."
             ),
         )
         parser.add_argument("--class-name", default="", help="Optional. Free-text metadata.")

@@ -116,6 +116,16 @@ class IngestSettings(models.Model):
             "short recording (Type B); at or above it, a long recording (Type A)."
         ),
     )
+    immich_add_tag = models.CharField(
+        max_length=200,
+        default="Nakavid/add",
+        help_text="Immich tag (full path) that marks an asset ready to import.",
+    )
+    immich_imported_tag = models.CharField(
+        max_length=200,
+        default="Nakavid/imported",
+        help_text="Immich tag an asset is moved to once it's safely imported.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
