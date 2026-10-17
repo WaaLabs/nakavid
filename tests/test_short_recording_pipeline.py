@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.library.models import Clip, Video
+from apps.library.models import Clip, Still, Video
 from apps.pipeline.handlers import handle_probe, handle_score
 from apps.pipeline.models import Job, ScoringParams
 from apps.pipeline.probe import ProbeResult
@@ -97,17 +97,20 @@ def test_a_browser_safe_short_recording_goes_straight_to_scoring(short_recording
 
 
 @pytest.mark.django_db
-def test_scoring_a_short_recording_scores_its_clip_and_queues_no_extraction(
+def test_scoring_a_short_recording_scores_its_clip_and_queues_stills_not_extraction(
     short_recording, storage_root
 ):
-    """It is already a clip, so there is nothing to cut — but it needs a score."""
+    """It is already a clip, so there is nothing to cut — but it needs a score
+
+    and, same as a long recording, a pass for the best still frames."""
     short_recording.duration_seconds = 20
     short_recording.save(update_fields=["duration_seconds"])
+    params = ScoringParams.objects.get()
     job = Job.objects.create(
         video=short_recording,
         job_type=Job.JobType.SCORE,
         status=Job.Status.PROCESSING,
-        scoring_params=ScoringParams.objects.get(),
+        scoring_params=params,
     )
     curve = [{"start": 0.0, "end": 4.0, "score": 62.0, "signals": {}}]
 
@@ -130,6 +133,8 @@ def test_scoring_a_short_recording_scores_its_clip_and_queues_no_extraction(
     assert not Job.objects.filter(
         video=short_recording, job_type=Job.JobType.CLIP_EXTRACTION
     ).exists()
+    still_job = Job.objects.get(video=short_recording, job_type=Job.JobType.STILL_EXTRACTION)
+    assert still_job.scoring_params_id == params.pk
 
 
 @pytest.mark.django_db
@@ -197,3 +202,41 @@ def test_transcoding_points_the_clip_at_the_playable_rendition(short_recording, 
     assert clip.storage_path != original
     # The original is still recorded on the video.
     assert short_recording.source_path == original
+
+
+@pytest.mark.django_db
+def test_retranscoding_requeues_stale_stills_but_no_clip_extraction(short_recording, storage_root):
+    """A short recording has no extracted clips to re-cut, only stills — and
+
+    those stills were cut from the file this job just replaced too."""
+    from apps.pipeline.handlers import handle_transcode
+
+    # get_active_scoring_params() picks the highest pk, so the pre-existing,
+    # migration-seeded row is the stale one once a newer row is created.
+    stale_params = ScoringParams.objects.get()
+    Still.objects.create(
+        video=short_recording,
+        storage_path="/nakavid/highlights/2026/07/20260701_a_b/IMG_2856__still_001__p999.jpg",
+        capture_seconds=Decimal("1.000"),
+        scoring_params=stale_params,
+        created_by=short_recording.created_by,
+    )
+    ScoringParams.objects.create(still_count=stale_params.still_count)
+    job = Job.objects.create(
+        video=short_recording,
+        job_type=Job.JobType.TRANSCODE,
+        status=Job.Status.PROCESSING,
+    )
+
+    with patch("apps.pipeline.handlers.run_ffmpeg_web_transcode"):
+        handle_transcode(job)
+
+    assert not Job.objects.filter(
+        video=short_recording, job_type=Job.JobType.CLIP_EXTRACTION
+    ).exists()
+    still_job = Job.objects.get(
+        video=short_recording,
+        job_type=Job.JobType.STILL_EXTRACTION,
+        scoring_params_id=stale_params.pk,
+    )
+    assert still_job.scoring_params_id == stale_params.pk

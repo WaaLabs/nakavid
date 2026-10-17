@@ -28,9 +28,28 @@ def user(db):
 
 
 def _create_type_a_video(*, storage_root: Path, user) -> Video:
+    return _create_video(
+        storage_root=storage_root,
+        user=user,
+        filename="lesson.mp4",
+        video_type=Video.VideoType.TYPE_A,
+        orientation=Video.Orientation.LANDSCAPE,
+        duration_seconds=60,
+    )
+
+
+def _create_video(
+    *,
+    storage_root: Path,
+    user,
+    filename: str,
+    video_type: str,
+    orientation: str,
+    duration_seconds: float,
+) -> Video:
     relative_path = build_originals_relative_path(
         recorded_at=timezone.now().date(),
-        filename="lesson.mp4",
+        filename=filename,
     )
     absolute_path = to_absolute_storage_path(storage_root, relative_path)
     file_path = storage_root / relative_path
@@ -39,10 +58,10 @@ def _create_type_a_video(*, storage_root: Path, user) -> Video:
     return Video.objects.create(
         title="Stills Sample",
         source_path=absolute_path,
-        video_type=Video.VideoType.TYPE_A,
-        orientation=Video.Orientation.LANDSCAPE,
+        video_type=video_type,
+        orientation=orientation,
         recorded_at=timezone.now(),
-        duration_seconds=60,
+        duration_seconds=duration_seconds,
         is_private=True,
         created_by=user,
     )
@@ -153,19 +172,35 @@ def test_handle_still_extraction_rerun_only_replaces_its_own_params(storage_root
 
 
 @pytest.mark.django_db
-def test_handle_still_extraction_skips_type_b(storage_root, user):
-    video = _create_type_a_video(storage_root=storage_root, user=user)
-    video.video_type = Video.VideoType.TYPE_B
-    video.save(update_fields=["video_type"])
+def test_handle_still_extraction_runs_for_type_b(storage_root, user):
+    """A short recording is a single file end-to-end, same as a long one's."""
+    video = _create_video(
+        storage_root=storage_root,
+        user=user,
+        filename="IMG_2856.MOV",
+        video_type=Video.VideoType.TYPE_B,
+        orientation=Video.Orientation.MIXED,
+        duration_seconds=20,
+    )
+    params = ScoringParams.objects.get()
     job = Job.objects.create(
         video=video,
         job_type=Job.JobType.STILL_EXTRACTION,
         status=Job.Status.PROCESSING,
-        scoring_params=ScoringParams.objects.get(),
+        scoring_params=params,
     )
 
-    with patch("apps.pipeline.handlers.gather_still_candidates") as gather:
+    with (
+        patch("apps.pipeline.handlers.gather_still_candidates", return_value=_candidates()),
+        patch("apps.pipeline.handlers.run_ffmpeg_thumbnail") as run_thumbnail,
+    ):
         handle_still_extraction(job)
 
-    gather.assert_not_called()
-    assert Still.objects.filter(video=video).count() == 0
+    stills = list(Still.objects.filter(video=video).order_by("capture_seconds"))
+    assert len(stills) == 2
+    assert run_thumbnail.call_count == 2
+    for index, (still, candidate) in enumerate(zip(stills, _candidates()), start=1):
+        assert float(still.capture_seconds) == candidate.at_seconds
+        assert still.scoring_params_id == params.pk
+        assert still.storage_path.startswith("/nakavid/highlights/")
+        assert f"__still_{index:03d}__p{params.pk}.jpg" in still.storage_path

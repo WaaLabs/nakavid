@@ -160,31 +160,38 @@ def handle_transcode(job: Job) -> None:
         enqueue_contact_sheet_job(video=video)
     enqueue_score_job(video=video)
 
+    # Every existing clip and still, whichever ScoringParams row produced it,
+    # was cut from the file this job just replaced (_playback_file_path always
+    # resolves to it). enqueue_score_job above only refreshes the active row's
+    # output; any other row that already has clips/stills here — a
+    # fixed/variable comparison, or last month's active row before a newer one
+    # took over — would otherwise keep showing whatever the previous
+    # rendition looked like. Re-cutting doesn't need a fresh score first:
+    # extraction reads the video's existing energy_curve, the same trade a
+    # manual eval run already makes (see enqueue_clip_extraction_eval). A
+    # short recording never has extracted clips, only stills, so it only
+    # takes the stills branch below.
+    active_id = get_active_scoring_params().pk
+    stale_still_params_ids = set(
+        video.stills.exclude(scoring_params_id=active_id).values_list(
+            "scoring_params_id", flat=True
+        )
+    )
+    stale_still_params_ids.discard(None)
+
+    stale_clip_params_ids: set[int] = set()
     if video.video_type == Video.VideoType.TYPE_A:
-        # Every existing clip and still, whichever ScoringParams row produced
-        # it, was cut from the file this job just replaced (_playback_file_path
-        # always resolves to it). enqueue_score_job above only refreshes the
-        # active row's output; any other row that already has clips/stills
-        # here — a fixed/variable comparison, or last month's active row
-        # before a newer one took over — would otherwise keep showing
-        # whatever the previous rendition looked like. Re-cutting doesn't
-        # need a fresh score first: extraction reads the video's existing
-        # energy_curve, the same trade a manual eval run already makes (see
-        # enqueue_clip_extraction_eval).
-        active_id = get_active_scoring_params().pk
-        stale_scoring_params_ids = set(
+        stale_clip_params_ids = set(
             video.clips.exclude(scoring_params_id=active_id).values_list(
                 "scoring_params_id", flat=True
             )
-        ) | set(
-            video.stills.exclude(scoring_params_id=active_id).values_list(
-                "scoring_params_id", flat=True
-            )
         )
-        stale_scoring_params_ids.discard(None)
-        for scoring_params_id in stale_scoring_params_ids:
+        stale_clip_params_ids.discard(None)
+
+    for scoring_params_id in stale_clip_params_ids | stale_still_params_ids:
+        if scoring_params_id in stale_clip_params_ids:
             enqueue_clip_extraction_job(video=video, scoring_params_id=scoring_params_id)
-            enqueue_still_extraction_job(video=video, scoring_params_id=scoring_params_id)
+        enqueue_still_extraction_job(video=video, scoring_params_id=scoring_params_id)
 
 
 def handle_contact_sheet(job: Job) -> None:
@@ -376,16 +383,14 @@ def handle_clip_extraction(job: Job) -> None:
 
 
 def handle_still_extraction(job: Job) -> None:
-    """Best-frame stills for a long recording — sharp, smiling, well composed.
+    """Best-frame stills for a recording — sharp, smiling, well composed.
 
     A still is not derived from the clip energy curve; it's its own coarse
     sampling pass over the whole recording (see gather_still_candidates), so
-    this only needs the video's own file, not a prior score stage.
+    this only needs the video's own file, not a prior score stage. That makes
+    it equally valid on a short recording's single file as on a long one's.
     """
     video = job.video
-    if video.video_type != Video.VideoType.TYPE_A:
-        return
-
     params = scoring_params_from_job(job)
     source_stem = Path(video.source_path).stem
     duration_seconds = float(video.duration_seconds)
@@ -509,6 +514,7 @@ def handle_score(job: Job) -> None:
     params = scoring_params_from_job(job)
     if video.video_type == Video.VideoType.TYPE_B:
         _score_short_recording(video=video, params=params)
+        enqueue_still_extraction_job(video=video, scoring_params_id=params.pk)
         return
 
     result = run_segment_scoring(
