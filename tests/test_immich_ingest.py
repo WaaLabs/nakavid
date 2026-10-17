@@ -15,6 +15,7 @@ from django.utils import timezone
 from apps.library.immich import ImmichAsset, ImmichClient, ImmichError, configured_base_url
 from apps.library.models import Video
 from apps.pipeline.models import Job
+from apps.pipeline.probe import ProbeError, ProbeResult
 
 User = get_user_model()
 
@@ -60,7 +61,30 @@ def _fake_download(self, asset_id, target_path):
     target_path.write_bytes(b"video bytes")
 
 
-def _run(**kwargs):
+# A real ffprobe can't read the fake bytes _fake_download writes, so every
+# test mocks run_ffprobe. This one's duration clears SHORT_RECORDING_MAX_SECONDS,
+# matching the "long" default every test expected before auto-classification
+# existed, unless a test passes its own probe_result.
+LONG_PROBE_RESULT = ProbeResult(
+    duration_seconds=1800,
+    orientation=Video.Orientation.LANDSCAPE,
+    video_codec="h264",
+    width=1920,
+    height=1080,
+    pixel_format="yuv420p",
+)
+
+SHORT_PROBE_RESULT = ProbeResult(
+    duration_seconds=12,
+    orientation=Video.Orientation.PORTRAIT,
+    video_codec="h264",
+    width=1080,
+    height=1920,
+    pixel_format="yuv420p",
+)
+
+
+def _run(probe_result=LONG_PROBE_RESULT, **kwargs):
     out = StringIO()
     downloads: list[tuple[str, Path]] = []
     retags: dict[str, list] = {"tagged": [], "untagged": []}
@@ -82,6 +106,7 @@ def _run(**kwargs):
         patch.object(ImmichClient, "upsert_tag", return_value={"id": "imported-tag-1"}),
         patch.object(ImmichClient, "tag_assets", fake_tag_assets),
         patch.object(ImmichClient, "untag_assets", fake_untag_assets),
+        patch("apps.library.immich_ingest.run_ffprobe", return_value=probe_result),
     ):
         call_command(
             "ingest_immich",
@@ -114,6 +139,7 @@ def test_class_name_and_theme_are_optional(storage_root, superuser):
         patch.object(ImmichClient, "upsert_tag", return_value={"id": "imported-tag-1"}),
         patch.object(ImmichClient, "tag_assets"),
         patch.object(ImmichClient, "untag_assets"),
+        patch("apps.library.immich_ingest.run_ffprobe", return_value=LONG_PROBE_RESULT),
     ):
         call_command("ingest_immich", stdout=StringIO())
 
@@ -150,6 +176,7 @@ def test_a_failed_retag_is_a_warning_not_a_failure(storage_root, superuser):
         patch.object(ImmichClient, "tagged_assets", return_value=ASSETS),
         patch.object(ImmichClient, "download_asset", _fake_download),
         patch.object(ImmichClient, "upsert_tag", side_effect=ImmichError("Immich is down")),
+        patch("apps.library.immich_ingest.run_ffprobe", return_value=LONG_PROBE_RESULT),
     ):
         call_command("ingest_immich", class_name="Quokka", theme="Lesson", stdout=out, stderr=err)
 
@@ -164,6 +191,7 @@ def test_the_imported_tag_name_can_be_overridden(storage_root, superuser):
         patch.object(ImmichClient, "tagged_assets", return_value=ASSETS),
         patch.object(ImmichClient, "download_asset", _fake_download),
         patch.object(ImmichClient, "upsert_tag", return_value={"id": "custom-1"}) as upsert_tag,
+        patch("apps.library.immich_ingest.run_ffprobe", return_value=LONG_PROBE_RESULT),
     ):
         call_command(
             "ingest_immich",
@@ -224,6 +252,7 @@ def test_the_files_own_metadata_wins_over_immichs_reported_date(storage_root, su
         patch.object(ImmichClient, "upsert_tag", return_value={"id": "imported-tag-1"}),
         patch.object(ImmichClient, "tag_assets"),
         patch.object(ImmichClient, "untag_assets"),
+        patch("apps.library.immich_ingest.run_ffprobe", return_value=LONG_PROBE_RESULT),
         patch(
             "apps.library.immich_ingest.probe_creation_time",
             return_value=timezone.make_aware(datetime(2019, 1, 2)),
@@ -284,12 +313,53 @@ def test_limit_stops_early(storage_root, superuser):
 
 
 @pytest.mark.django_db
-def test_short_recordings_get_their_clip_row(storage_root, superuser):
-    _run(type="short")
+def test_a_short_video_is_classified_as_type_b_automatically(storage_root, superuser):
+    """No --type flag needed: length alone decides the stream."""
+    _run(probe_result=SHORT_PROBE_RESULT)
+
+    for video in Video.objects.all():
+        assert video.video_type == Video.VideoType.TYPE_B
+        assert video.orientation == Video.Orientation.PORTRAIT
+        assert video.clips.count() == 1
+
+
+@pytest.mark.django_db
+def test_a_long_video_is_classified_as_type_a_automatically(storage_root, superuser):
+    _run()  # LONG_PROBE_RESULT is the default.
+
+    for video in Video.objects.all():
+        assert video.video_type == Video.VideoType.TYPE_A
+        assert video.orientation == Video.Orientation.LANDSCAPE
+        assert video.clips.count() == 0
+
+
+@pytest.mark.django_db
+def test_an_explicit_type_overrides_auto_classification(storage_root, superuser):
+    """--type short still forces it, even for footage long enough to auto-classify as Type A."""
+    _run(type="short")  # LONG_PROBE_RESULT (30 min) would otherwise be Type A.
 
     for video in Video.objects.all():
         assert video.video_type == Video.VideoType.TYPE_B
         assert video.clips.count() == 1
+
+
+@pytest.mark.django_db
+def test_an_unreadable_download_is_skipped_not_imported(storage_root, superuser):
+    """Immich served the file, but ffprobe can't read it — as unusable as a failed download."""
+    out = StringIO()
+    err = StringIO()
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-1"}),
+        patch.object(ImmichClient, "tagged_assets", return_value=ASSETS[:1]),
+        patch.object(ImmichClient, "download_asset", _fake_download),
+        patch("apps.library.immich_ingest.run_ffprobe", side_effect=ProbeError("corrupt")),
+    ):
+        call_command("ingest_immich", class_name="A", theme="B", stdout=out, stderr=err)
+
+    assert Video.objects.count() == 0
+    assert "failed: could not read" in err.getvalue()
+    staging_root = storage_root / ".staging"
+    assert list(staging_root.iterdir()) == [] if staging_root.exists() else True
 
 
 @pytest.mark.django_db

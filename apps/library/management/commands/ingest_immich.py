@@ -5,7 +5,9 @@ shortest path from filming something to having it scored — no second upload.
 Tag whatever is ready to import with Nakavid/add in Immich, then run this;
 only videos carrying that tag are pulled. Once a video is safely imported,
 its tag moves from Nakavid/add to Nakavid/imported, so it doesn't sit there
-looking ready to pull all over again on the next run.
+looking ready to pull all over again on the next run. Long recordings and
+short ones carry the same tag — each is classified long vs short by its own
+probed duration, not by which button or flag you used to pull it.
 
 The same pull also runs as a background job when triggered from the web
 UI's "Scan Immich" button — see apps.library.immich_ingest.run_immich_ingest,
@@ -46,7 +48,15 @@ class Command(BaseCommand):
         )
         parser.add_argument("--class-name", default="", help="Optional. Free-text metadata.")
         parser.add_argument("--theme", default="", help="Optional. Free-text metadata.")
-        parser.add_argument("--type", choices=["long", "short"], default="long")
+        parser.add_argument(
+            "--type",
+            choices=["auto", "long", "short"],
+            default="auto",
+            help=(
+                "Default: auto — classify each video long/short by its own probed "
+                "duration. Pass long/short to force every video in this run to it."
+            ),
+        )
         parser.add_argument("--user", help="Username to attribute the ingest to.")
         parser.add_argument(
             "--dry-run",
@@ -69,12 +79,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options) -> None:
         user = self._resolve_user(options["user"])
-        video_type = Video.VideoType.TYPE_A if options["type"] == "long" else Video.VideoType.TYPE_B
-        orientation = (
-            Video.Orientation.LANDSCAPE
-            if video_type == Video.VideoType.TYPE_A
-            else Video.Orientation.MIXED
-        )
+        video_type = {
+            "auto": None,
+            "long": Video.VideoType.TYPE_A,
+            "short": Video.VideoType.TYPE_B,
+        }[options["type"]]
 
         try:
             run_immich_ingest(
@@ -82,7 +91,6 @@ class Command(BaseCommand):
                 tag=options["tag"],
                 imported_tag=options["imported_tag"],
                 video_type=video_type,
-                orientation=orientation,
                 class_name=options["class_name"],
                 theme=options["theme"],
                 dry_run=options["dry_run"],

@@ -29,6 +29,7 @@ from apps.library.storage_paths import (
 )
 from apps.library.video_metadata import probe_creation_time
 from apps.pipeline.enqueue import STUB_DURATION_SECONDS, enqueue_probe_job
+from apps.pipeline.probe import ProbeError, classify_video_type_from_duration, run_ffprobe
 
 DEFAULT_TAG = "Nakavid/add"
 DEFAULT_IMPORTED_TAG = "Nakavid/imported"
@@ -70,8 +71,7 @@ def run_immich_ingest(
     user,
     tag: str = DEFAULT_TAG,
     imported_tag: str = DEFAULT_IMPORTED_TAG,
-    video_type: str = Video.VideoType.TYPE_A,
-    orientation: str = Video.Orientation.LANDSCAPE,
+    video_type: str | None = None,
     class_name: str = "",
     theme: str = "",
     dry_run: bool = False,
@@ -81,9 +81,17 @@ def run_immich_ingest(
 ) -> None:
     """Pull every video tagged `tag` that isn't already in the library.
 
+    video_type defaults to None: each asset is classified long vs short by
+    its own probed duration (see classify_video_type_from_duration) rather
+    than an operator having to say which stream it belongs in — the one
+    "Scan Immich" button handles both. Pass an explicit Video.VideoType to
+    force every asset in this run to it regardless of length. Orientation is
+    always the probed one; there is nothing to override there.
+
     Raises ImmichError on anything that stops the run outright (bad
-    credentials, tag not found, ...). A single asset's download failing does
-    not — it's logged via write_err and skipped, same as it always has been.
+    credentials, tag not found, ...). A single asset's download failing — or
+    not being a readable video once downloaded — does not; it's logged via
+    write_err and skipped, same as it always has been.
     """
     storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
 
@@ -130,6 +138,26 @@ def run_immich_ingest(
             write_err(f"  failed: {exc}")
             continue
 
+        # Classifying by length needs the file itself, not Immich's metadata
+        # about it — same trust order as the recording date below. A file
+        # Immich happily served but ffprobe can't read is as unusable as a
+        # failed download.
+        try:
+            probe_result = run_ffprobe(staging_path)
+        except ProbeError as exc:
+            write_err(f"  failed: could not read {asset.original_file_name}: {exc}")
+            staging_path.unlink(missing_ok=True)
+            try:
+                staging_path.parent.rmdir()
+            except OSError:
+                pass
+            continue
+        resolved_video_type = (
+            video_type
+            if video_type is not None
+            else classify_video_type_from_duration(probe_result.duration_seconds)
+        )
+
         # The file's own creation_time tag is the trustworthy source; Immich's
         # asset metadata is a fallback for footage that has none.
         recorded_at = probe_creation_time(staging_path) or _recorded_at(asset.created_at)
@@ -143,14 +171,17 @@ def run_immich_ingest(
         except OSError:
             pass
 
-        write_out(f"pull  {asset.original_file_name} ({recorded_at.date()}) -> {relative_path}")
+        write_out(
+            f"pull  {asset.original_file_name} ({recorded_at.date()}) "
+            f"[{resolved_video_type}] -> {relative_path}"
+        )
 
         with transaction.atomic():
             video = Video.objects.create(
                 title=Path(asset.original_file_name).stem,
                 source_path=storage_path,
-                video_type=video_type,
-                orientation=orientation,
+                video_type=resolved_video_type,
+                orientation=probe_result.orientation,
                 class_name=class_name,
                 theme=theme,
                 recorded_at=recorded_at,
@@ -159,7 +190,7 @@ def run_immich_ingest(
                 immich_asset_id=asset.id,
                 created_by=user,
             )
-            if video_type == Video.VideoType.TYPE_B:
+            if resolved_video_type == Video.VideoType.TYPE_B:
                 Clip.objects.create(
                     video=video,
                     storage_path=storage_path,
