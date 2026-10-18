@@ -23,7 +23,11 @@ class Migration(migrations.Migration):
                     "short_recording_max_seconds",
                     models.PositiveIntegerField(
                         default=300,
-                        help_text="An Immich import under this length (in seconds) is classified as a short recording (Type B); at or above it, a long recording (Type A).",
+                        help_text=(
+                            "An Immich import under this length (in seconds) is classified "
+                            "as a short recording (Type B); at or above it, a long "
+                            "recording (Type A)."
+                        ),
                     ),
                 ),
                 ("updated_at", models.DateTimeField(auto_now=True)),
