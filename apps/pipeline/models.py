@@ -97,6 +97,51 @@ class ScoringParams(models.Model):
         return f"ScoringParams #{self.pk}"
 
 
+class IngestSettings(models.Model):
+    """One row, editable from Django admin — operator config for how footage
+
+    comes in, as distinct from ScoringParams' append-only tuning history for
+    how an already-ingested video gets scored. Deliberately not a
+    ScoringParams field: ScoringParams versions a change as a new row (see
+    get_active_scoring_params), and this cutoff deciding which ingest stream
+    a file lands in must not silently move just because someone tunes
+    scoring weights. See IngestSettingsAdmin for how the single row is kept
+    singular.
+    """
+
+    short_recording_max_seconds = models.PositiveIntegerField(
+        default=300,
+        help_text=(
+            "An Immich import under this length (in seconds) is classified as a "
+            "short recording (Type B); at or above it, a long recording (Type A)."
+        ),
+    )
+    immich_add_tag = models.CharField(
+        max_length=200,
+        default="Nakavid/add",
+        help_text="Immich tag (full path) that marks an asset ready to import.",
+    )
+    immich_imported_tag = models.CharField(
+        max_length=200,
+        default="Nakavid/imported",
+        help_text="Immich tag an asset is moved to once it's safely imported.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Ingest settings"
+        verbose_name_plural = "Ingest settings"
+
+    def __str__(self) -> str:
+        return "Ingest settings"
+
+    @classmethod
+    def load(cls) -> "IngestSettings":
+        """The one row, creating it with defaults on first use."""
+        settings_row, _ = cls.objects.get_or_create(pk=1)
+        return settings_row
+
+
 class Job(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

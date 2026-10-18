@@ -29,10 +29,8 @@ from apps.library.storage_paths import (
 )
 from apps.library.video_metadata import probe_creation_time
 from apps.pipeline.enqueue import STUB_DURATION_SECONDS, enqueue_probe_job
+from apps.pipeline.models import IngestSettings
 from apps.pipeline.probe import ProbeError, classify_video_type_from_duration, run_ffprobe
-
-DEFAULT_TAG = "Nakavid/add"
-DEFAULT_IMPORTED_TAG = "Nakavid/imported"
 
 
 def _recorded_at(raw: str) -> datetime:
@@ -69,8 +67,8 @@ def resolve_default_user():
 def run_immich_ingest(
     *,
     user,
-    tag: str = DEFAULT_TAG,
-    imported_tag: str = DEFAULT_IMPORTED_TAG,
+    tag: str | None = None,
+    imported_tag: str | None = None,
     video_type: str | None = None,
     class_name: str = "",
     theme: str = "",
@@ -80,6 +78,11 @@ def run_immich_ingest(
     write_err=_noop,
 ) -> None:
     """Pull every video tagged `tag` that isn't already in the library.
+
+    tag/imported_tag default to None: the configured Immich tags from
+    IngestSettings (editable at /admin/pipeline/ingestsettings/, same as
+    video_type's cutoff) rather than a value baked into the CLI or the web
+    button. Pass either explicitly to override just this run.
 
     video_type defaults to None: each asset is classified long vs short by
     its own probed duration (see classify_video_type_from_duration) rather
@@ -94,13 +97,18 @@ def run_immich_ingest(
     write_err and skipped, same as it always has been.
     """
     storage_root = Path(settings.NAKAVID_STORAGE_ROOT)
+    ingest_settings = IngestSettings.load()
+    resolved_tag = tag if tag is not None else ingest_settings.immich_add_tag
+    resolved_imported_tag = (
+        imported_tag if imported_tag is not None else ingest_settings.immich_imported_tag
+    )
 
     client = ImmichClient()
-    immich_tag = client.tag_named(tag)
+    immich_tag = client.tag_named(resolved_tag)
     assets = client.tagged_assets(str(immich_tag["id"]))
 
     videos = [asset for asset in assets if asset.is_video]
-    write_out(f"tag {tag!r}: {len(assets)} asset(s), {len(videos)} video(s)")
+    write_out(f"tag {resolved_tag!r}: {len(assets)} asset(s), {len(videos)} video(s)")
 
     already = set(
         Video.objects.exclude(immich_asset_id="").values_list("immich_asset_id", flat=True)
@@ -207,7 +215,12 @@ def run_immich_ingest(
 
     if imported_asset_ids:
         _retag_imported(
-            client, imported_tag, str(immich_tag["id"]), imported_asset_ids, write_out, write_err
+            client,
+            resolved_imported_tag,
+            str(immich_tag["id"]),
+            imported_asset_ids,
+            write_out,
+            write_err,
         )
 
 

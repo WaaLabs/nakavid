@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from apps.library.immich import ImmichAsset, ImmichClient, ImmichError, configured_base_url
 from apps.library.models import Video
-from apps.pipeline.models import Job
+from apps.pipeline.models import IngestSettings, Job
 from apps.pipeline.probe import ProbeError, ProbeResult
 
 User = get_user_model()
@@ -231,6 +231,34 @@ def test_a_different_tag_can_be_selected(storage_root, superuser):
 
     tag_named.assert_called_once_with("Nakavid/review")
     tagged_assets.assert_called_once_with("tag-2")
+
+
+@pytest.mark.django_db
+def test_a_configured_add_tag_is_used_when_not_overridden(storage_root, superuser):
+    """Settings -> Ingest settings, not a --tag flag, is the source of truth."""
+    settings_row = IngestSettings.load()
+    settings_row.immich_add_tag = "Lessons/ready"
+    settings_row.save()
+
+    with (
+        patch.object(ImmichClient, "tag_named", return_value={"id": "tag-9"}) as tag_named,
+        patch.object(ImmichClient, "tagged_assets", return_value=[]),
+    ):
+        call_command("ingest_immich", class_name="Quokka", theme="Lesson", stdout=StringIO())
+
+    tag_named.assert_called_once_with("Lessons/ready")
+
+
+@pytest.mark.django_db
+def test_a_configured_imported_tag_is_used_when_not_overridden(storage_root, superuser):
+    settings_row = IngestSettings.load()
+    settings_row.immich_imported_tag = "Lessons/done"
+    settings_row.save()
+
+    output, _, retags = _run()
+
+    assert retags["tagged"] == [("imported-tag-1", ["asset-1", "asset-2"])]
+    assert "retagged 2 video(s) as 'Lessons/done' in Immich" in output
 
 
 @pytest.mark.django_db

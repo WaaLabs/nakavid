@@ -7,6 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from apps.library.models import Video
+from apps.pipeline.models import IngestSettings
 
 
 class ProbeError(Exception):
@@ -30,12 +31,6 @@ class ProbeResult:
 _BROWSER_SAFE_VIDEO_CODEC = "h264"
 _BROWSER_SAFE_PIXEL_FORMATS = frozenset({"", "yuv420p", "yuvj420p"})
 
-# AGENTS.md's domain language: Type A is a long recording (40-90+ min), Type B
-# is an in-the-moment clip (<5 min). Anything under this cutoff has nothing to
-# split, so an ingest path can classify by length alone instead of asking an
-# operator to say which stream a file belongs in.
-SHORT_RECORDING_MAX_SECONDS = 5 * 60
-
 
 def needs_web_transcode(*, codec_name: str, pixel_format: str) -> bool:
     """True when the source stream is not directly playable in a browser."""
@@ -45,8 +40,17 @@ def needs_web_transcode(*, codec_name: str, pixel_format: str) -> bool:
 
 
 def classify_video_type_from_duration(duration_seconds: float) -> str:
-    """Long recording vs short recording, by length alone."""
-    if duration_seconds < SHORT_RECORDING_MAX_SECONDS:
+    """Long recording vs short recording, by length alone.
+
+    The cutoff (IngestSettings.load().short_recording_max_seconds) is
+    operator config, editable from Django admin — it decides which ingest
+    stream a file belongs in, not how it's scored once it's in, which is why
+    it isn't a ScoringParams field. AGENTS.md's domain language — Type A is
+    40-90+ min, Type B is "<5 min" — is this setting's default, not a fixed
+    rule.
+    """
+    cutoff = IngestSettings.load().short_recording_max_seconds
+    if duration_seconds < cutoff:
         return Video.VideoType.TYPE_B
     return Video.VideoType.TYPE_A
 
