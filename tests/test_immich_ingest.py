@@ -12,7 +12,13 @@ from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.utils import timezone
 
-from apps.library.immich import ImmichAsset, ImmichClient, ImmichError, configured_base_url
+from apps.library.immich import (
+    ImmichAlbum,
+    ImmichAsset,
+    ImmichClient,
+    ImmichError,
+    configured_base_url,
+)
 from apps.library.models import Video
 from apps.pipeline.models import IngestSettings, Job
 from apps.pipeline.probe import ProbeError, ProbeResult
@@ -585,3 +591,134 @@ def test_tagged_assets_reports_an_unexpected_payload():
 
     with pytest.raises(ImmichError, match="no assets block"):
         client.tagged_assets("tag-1")
+
+
+ALBUM = ImmichAlbum(id="album-1", name="Skippy 2026", asset_count=3, shared=True)
+
+
+def _run_album(**kwargs):
+    out = StringIO()
+    downloads: list[str] = []
+
+    def fake_download(self, asset_id, target_path):
+        downloads.append(asset_id)
+        _fake_download(self, asset_id, target_path)
+
+    with (
+        patch.object(ImmichClient, "album_named", return_value=ALBUM) as album_named,
+        patch.object(ImmichClient, "album_assets", return_value=ASSETS) as album_assets,
+        patch.object(ImmichClient, "tag_named") as tag_named,
+        patch.object(ImmichClient, "download_asset", fake_download),
+        patch.object(ImmichClient, "upsert_tag") as upsert_tag,
+        patch.object(ImmichClient, "tag_assets") as tag_assets,
+        patch.object(ImmichClient, "untag_assets") as untag_assets,
+        patch("apps.library.immich_ingest.run_ffprobe", return_value=LONG_PROBE_RESULT),
+    ):
+        call_command("ingest_immich", album="Skippy 2026", stdout=out, **kwargs)
+    mocks = {
+        "album_named": album_named,
+        "album_assets": album_assets,
+        "tag_named": tag_named,
+        "writes": [upsert_tag, tag_assets, untag_assets],
+    }
+    return out.getvalue(), downloads, mocks
+
+
+@pytest.mark.django_db
+def test_an_album_pull_imports_its_videos(storage_root, superuser):
+    output, downloads, mocks = _run_album()
+
+    mocks["album_named"].assert_called_once_with("Skippy 2026")
+    mocks["album_assets"].assert_called_once_with("album-1")
+    mocks["tag_named"].assert_not_called()
+    assert downloads == ["asset-1", "asset-2"]
+    assert Video.objects.count() == 2
+    assert "album 'Skippy 2026': 3 asset(s), 2 video(s)" in output
+
+
+@pytest.mark.django_db
+def test_an_album_pull_writes_nothing_back_to_immich(storage_root, superuser):
+    """A shared album's assets belong to another account — they can't be tagged."""
+    output, _, mocks = _run_album()
+
+    for write in mocks["writes"]:
+        write.assert_not_called()
+    assert "retagged" not in output
+
+
+@pytest.mark.django_db
+def test_an_album_pull_only_imports_videos_new_to_nakavid(storage_root, superuser):
+    _run_album(limit=1)
+    output, downloads, _ = _run_album()
+
+    assert downloads == ["asset-2"]
+    assert Video.objects.count() == 2
+    assert "pulled 1 video(s), skipped 1 already in the library" in output
+
+
+def test_albums_merges_owned_and_shared_listings():
+    """Albums shared from another account only come back with shared=true."""
+    client = _client_with_responses(
+        {
+            "/api/albums": [
+                {"id": "a1", "albumName": "skippy 2026", "assetCount": 4, "shared": True},
+                {"id": "a2", "albumName": "Halloween", "assetCount": 9, "shared": False},
+            ],
+            "/api/albums?shared=true": [
+                {"id": "a1", "albumName": "skippy 2026", "assetCount": 4, "shared": True},
+                {"id": "a3", "albumName": "From a friend", "assetCount": 2, "shared": True},
+            ],
+        }
+    )
+
+    albums = client.albums()
+
+    assert [album.id for album in albums] == ["a3", "a2", "a1"]
+    assert albums[0] == ImmichAlbum(id="a3", name="From a friend", asset_count=2, shared=True)
+
+
+def test_album_named_matches_an_id_or_a_name():
+    client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
+    client.albums = lambda: [  # type: ignore[method-assign]
+        ImmichAlbum(id="a1", name="Skippy 2026", asset_count=1, shared=True),
+        ImmichAlbum(id="a2", name="Twice", asset_count=1, shared=False),
+        ImmichAlbum(id="a3", name="twice", asset_count=1, shared=False),
+    ]
+
+    assert client.album_named("a1").name == "Skippy 2026"
+    assert client.album_named("skippy 2026").id == "a1"
+    with pytest.raises(ImmichError, match="No Immich album named 'Nope'"):
+        client.album_named("Nope")
+    with pytest.raises(ImmichError, match="More than one Immich album"):
+        client.album_named("Twice")
+
+
+def test_album_assets_reads_the_albums_own_contents():
+    client = _client_with_responses(
+        {
+            "/api/albums/a1": {
+                "id": "a1",
+                "assets": [
+                    {
+                        "id": "v1",
+                        "type": "VIDEO",
+                        "originalFileName": "one.mov",
+                        "fileCreatedAt": "2026-05-04T10:30:00Z",
+                    },
+                    {"id": "p1", "type": "IMAGE", "originalFileName": "snap.jpg"},
+                ],
+            }
+        }
+    )
+
+    assets = client.album_assets("a1")
+
+    assert [(asset.id, asset.is_video) for asset in assets] == [("v1", True), ("p1", False)]
+    assert assets[0].original_file_name == "one.mov"
+
+
+def test_album_assets_reports_an_album_with_no_assets_list():
+    client = _client_with_responses({"/api/albums/a1": {"id": "a1"}})
+
+    with pytest.raises(ImmichError, match="no assets list"):
+        client.album_assets("a1")

@@ -30,15 +30,12 @@
           <a href="{% url 'queue-status' %}" {% if current == 'queue-status' %}aria-current="page"{% endif %}>Queue</a>
 
           <details class="nv-menu">
-            <summary {% if current == 'type-a-ingest' or current == 'type-b-ingest' %}aria-current="page"{% endif %}>Upload</summary>
+            <summary {% if current == 'type-a-ingest' or current == 'type-b-ingest' or current == 'immich-import' %}aria-current="page"{% endif %}>Upload</summary>
             <div class="nv-menu__panel">
               <a href="{% url 'type-a-ingest' %}">Long recording</a>
               <a href="{% url 'type-b-ingest' %}">Short recording</a>
               {% if immich_configured %}
-              <form method="post" action="{% url 'immich-scan' %}">
-                {% csrf_token %}
-                <button type="submit">Scan Immich</button>
-              </form>
+              <a href="{% url 'immich-import' %}">From Immich</a>
               {% endif %}
             </div>
           </details>

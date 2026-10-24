@@ -225,7 +225,8 @@ def handle_contact_sheet(job: Job) -> None:
 
 
 def handle_ingest(job: Job) -> None:
-    """A web-triggered scan for new Nakavid/add-tagged videos in Immich.
+    """A web-triggered pull of new videos from an Immich album, or — when the
+    job names no album — of new Nakavid/add-tagged videos.
 
     Runs the exact same pull as `manage.py ingest_immich`, defaults and all —
     see run_immich_ingest. Attributed to the single superuser, the same
@@ -235,7 +236,7 @@ def handle_ingest(job: Job) -> None:
     ambiguous superuser, ...) propagates and lands this job in ERROR, same as
     any other handler's typed error.
     """
-    run_immich_ingest(user=resolve_default_user())
+    run_immich_ingest(user=resolve_default_user(), album_id=job.immich_album_id or None)
 
 
 def _mark_combine_error(combine: Combine) -> None:

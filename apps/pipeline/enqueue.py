@@ -11,10 +11,11 @@ def enqueue_probe_job(*, video: Video) -> Job:
     return Job.objects.create(video=video, job_type=Job.JobType.PROBE)
 
 
-def enqueue_ingest_job() -> Job:
-    """Queue a scan for new tagged videos in Immich. No video yet — that's
-    the point; handle_ingest finds and creates them."""
-    return Job.objects.create(job_type=Job.JobType.INGEST)
+def enqueue_ingest_job(*, album_id: str = "") -> Job:
+    """Queue a pull of new videos from an Immich album — or, with no album,
+    of new tagged videos. No video yet — that's the point; handle_ingest
+    finds and creates them."""
+    return Job.objects.create(job_type=Job.JobType.INGEST, immich_album_id=album_id)
 
 
 def enqueue_transcode_job(*, video: Video) -> Job:
