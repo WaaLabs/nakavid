@@ -693,32 +693,38 @@ def test_album_named_matches_an_id_or_a_name():
         client.album_named("Twice")
 
 
-def test_album_assets_reads_the_albums_own_contents():
-    client = _client_with_responses(
-        {
-            "/api/albums/a1": {
-                "id": "a1",
-                "assets": [
+def test_album_assets_searches_the_albums_videos():
+    """Immich 3's album response has no assets list; search is the way in."""
+    client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
+    seen: list[dict] = []
+
+    def fake_post(path, body):
+        seen.append(body)
+        return {
+            "assets": {
+                "items": [
                     {
                         "id": "v1",
                         "type": "VIDEO",
                         "originalFileName": "one.mov",
                         "fileCreatedAt": "2026-05-04T10:30:00Z",
-                    },
-                    {"id": "p1", "type": "IMAGE", "originalFileName": "snap.jpg"},
+                    }
                 ],
+                "nextPage": None,
             }
         }
-    )
 
+    client._post_json = fake_post  # type: ignore[method-assign]
     assets = client.album_assets("a1")
 
-    assert [(asset.id, asset.is_video) for asset in assets] == [("v1", True), ("p1", False)]
-    assert assets[0].original_file_name == "one.mov"
+    assert [(asset.id, asset.original_file_name) for asset in assets] == [("v1", "one.mov")]
+    assert seen[0]["albumIds"] == ["a1"]
+    assert seen[0]["type"] == "VIDEO"
 
 
-def test_album_assets_reports_an_album_with_no_assets_list():
-    client = _client_with_responses({"/api/albums/a1": {"id": "a1"}})
+def test_album_assets_reports_an_unexpected_payload():
+    client = ImmichClient(base_url="http://127.0.0.1:2283", api_key="k")
+    client._post_json = lambda path, body: {"unexpected": True}  # type: ignore[method-assign]
 
-    with pytest.raises(ImmichError, match="no assets list"):
+    with pytest.raises(ImmichError, match="album a1 returned no assets block"):
         client.album_assets("a1")

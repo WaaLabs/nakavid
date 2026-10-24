@@ -219,23 +219,22 @@ class ImmichClient:
             return
         self._send_json("DELETE", f"/api/tags/{tag_id}/assets", {"ids": asset_ids})
 
-    def tagged_assets(self, tag_id: str) -> list[ImmichAsset]:
-        """Videos carrying a tag, via metadata search.
+    def _search_videos(self, filters: dict, label: str) -> list[ImmichAsset]:
+        """Videos matching a metadata-search filter, every page of them.
 
-        Searching by tagId filters to videos server-side rather than fetching
-        every photo just to discard it here — the same route album_assets
-        used before tags replaced albums as the selection mechanism.
+        Filtering to videos server-side saves fetching every photo just to
+        discard it here.
         """
         assets: list[ImmichAsset] = []
         page = 1
         while True:
             payload = self._post_json(
                 "/api/search/metadata",
-                {"tagIds": [tag_id], "type": "VIDEO", "size": SEARCH_PAGE_SIZE, "page": page},
+                {**filters, "type": "VIDEO", "size": SEARCH_PAGE_SIZE, "page": page},
             )
             block = payload.get("assets") if isinstance(payload, dict) else None
             if block is None:
-                raise ImmichError(f"Immich search for tag {tag_id} returned no assets block")
+                raise ImmichError(f"Immich search for {label} returned no assets block")
             assets.extend(_asset_from_payload(asset) for asset in block.get("items") or [])
             next_page = block.get("nextPage")
             if not next_page:
@@ -244,6 +243,10 @@ class ImmichClient:
                 page = int(next_page)
             except (TypeError, ValueError):
                 return assets
+
+    def tagged_assets(self, tag_id: str) -> list[ImmichAsset]:
+        """Videos carrying a tag."""
+        return self._search_videos({"tagIds": [tag_id]}, f"tag {tag_id}")
 
     def albums(self) -> list[ImmichAlbum]:
         """Every album this key can see — its own, and ones shared with it.
@@ -278,17 +281,13 @@ class ImmichClient:
         return matches[0]
 
     def album_assets(self, album_id: str) -> list[ImmichAsset]:
-        """Everything in an album, photos included — callers filter to videos.
+        """Videos in an album, including ones another account added or owns.
 
-        Read from the album itself rather than metadata search: search is
-        scoped to the key's own (and partners') assets, so it can miss what
-        another account added to a shared album.
+        Immich 3 no longer lists an album's assets in the album itself, so
+        this goes through metadata search, which does cover a shared album's
+        assets when filtered by albumIds.
         """
-        quoted = urllib.parse.quote(album_id, safe="")
-        payload = self._get_json(f"/api/albums/{quoted}")
-        if not isinstance(payload, dict) or not isinstance(payload.get("assets"), list):
-            raise ImmichError(f"Immich album {album_id} returned no assets list")
-        return [_asset_from_payload(asset) for asset in payload["assets"]]
+        return self._search_videos({"albumIds": [album_id]}, f"album {album_id}")
 
     def download_asset(self, asset_id: str, target_path: Path) -> None:
         """Stream an original to disk. These are gigabytes; never buffer them."""
