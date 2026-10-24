@@ -170,6 +170,9 @@ class Job(models.Model):
     scoring_params = models.ForeignKey(
         ScoringParams, on_delete=models.PROTECT, related_name="jobs", null=True, blank=True
     )
+    # INGEST only: the Immich album to pull new videos from. Blank means the
+    # tag-based pull (IngestSettings.immich_add_tag) instead.
+    immich_album_id = models.CharField(max_length=64, blank=True, default="")
     job_type = models.CharField(max_length=32, choices=JobType.choices)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     stderr = models.TextField(blank=True)

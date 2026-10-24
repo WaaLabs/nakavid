@@ -202,6 +202,16 @@ class CombineBuilderSubmitForm(forms.Form):
         return clip_ids
 
 
+class ImmichAlbumImportForm(forms.Form):
+    """Which Immich album to preview or pull from. Blank is the tag-based pull."""
+
+    album_id = forms.UUIDField(required=False)
+
+    def cleaned_album_id(self) -> str:
+        album_id = self.cleaned_data.get("album_id")
+        return str(album_id) if album_id else ""
+
+
 class ScoringTuningForm(forms.Form):
     """Parameters that can be re-applied without re-scoring.
 

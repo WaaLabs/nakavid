@@ -1,14 +1,17 @@
 """A minimal client for a self-hosted Immich instance.
 
 Immich is where footage already lands — phones back up to it automatically —
-so pulling footage tagged for import there beats uploading the same file a
-second time by hand.
+so pulling footage from there beats uploading the same file a second time
+by hand. Two ways to say what to pull: an album (which works for albums
+shared from another account — Immich only lets an asset's owner tag it), or
+a tag on footage the key's own account owns.
 
 Footage itself is read-only: nothing here ever uploads or modifies an asset's
 media. Immich stays the inbox; NakaVid owns the library. The one write is
-tag housekeeping — once an asset is safely imported, its tag moves from
-Nakavid/add to Nakavid/imported, so it doesn't keep showing up as ready to
-pull.
+tag housekeeping on a tag-based pull — once an asset is safely imported, its
+tag moves from Nakavid/add to Nakavid/imported, so it doesn't keep showing up
+as ready to pull. An album pull writes nothing back: NakaVid already knows
+which asset ids it has imported, and skips them.
 
 Privacy: the instance must be on the LAN, per the AGENTS.md rule that footage
 never leaves it. configured_base_url refuses anything that does not resolve to
@@ -43,6 +46,36 @@ class ImmichAsset:
     original_file_name: str
     created_at: str
     is_video: bool
+
+
+@dataclass(frozen=True)
+class ImmichAlbum:
+    id: str
+    name: str
+    asset_count: int
+    shared: bool
+
+
+def _asset_from_payload(asset: dict) -> ImmichAsset:
+    return ImmichAsset(
+        id=str(asset.get("id", "")),
+        original_file_name=str(asset.get("originalFileName") or asset.get("id", "")),
+        created_at=str(asset.get("fileCreatedAt") or asset.get("createdAt") or ""),
+        is_video=str(asset.get("type", "")).upper() == "VIDEO",
+    )
+
+
+def _album_from_payload(album: dict) -> ImmichAlbum:
+    try:
+        asset_count = int(album.get("assetCount") or 0)
+    except (TypeError, ValueError):
+        asset_count = 0
+    return ImmichAlbum(
+        id=str(album.get("id", "")),
+        name=str(album.get("albumName") or album.get("id", "")),
+        asset_count=asset_count,
+        shared=bool(album.get("shared")),
+    )
 
 
 def _resolves_to_private_address(host: str) -> bool:
@@ -186,34 +219,23 @@ class ImmichClient:
             return
         self._send_json("DELETE", f"/api/tags/{tag_id}/assets", {"ids": asset_ids})
 
-    def tagged_assets(self, tag_id: str) -> list[ImmichAsset]:
-        """Videos carrying a tag, via metadata search.
+    def _search_videos(self, filters: dict, label: str) -> list[ImmichAsset]:
+        """Videos matching a metadata-search filter, every page of them.
 
-        Searching by tagId filters to videos server-side rather than fetching
-        every photo just to discard it here — the same route album_assets
-        used before tags replaced albums as the selection mechanism.
+        Filtering to videos server-side saves fetching every photo just to
+        discard it here.
         """
         assets: list[ImmichAsset] = []
         page = 1
         while True:
             payload = self._post_json(
                 "/api/search/metadata",
-                {"tagIds": [tag_id], "type": "VIDEO", "size": SEARCH_PAGE_SIZE, "page": page},
+                {**filters, "type": "VIDEO", "size": SEARCH_PAGE_SIZE, "page": page},
             )
             block = payload.get("assets") if isinstance(payload, dict) else None
             if block is None:
-                raise ImmichError(f"Immich search for tag {tag_id} returned no assets block")
-            for asset in block.get("items") or []:
-                assets.append(
-                    ImmichAsset(
-                        id=str(asset.get("id", "")),
-                        original_file_name=str(
-                            asset.get("originalFileName") or asset.get("id", "")
-                        ),
-                        created_at=str(asset.get("fileCreatedAt") or asset.get("createdAt") or ""),
-                        is_video=str(asset.get("type", "")).upper() == "VIDEO",
-                    )
-                )
+                raise ImmichError(f"Immich search for {label} returned no assets block")
+            assets.extend(_asset_from_payload(asset) for asset in block.get("items") or [])
             next_page = block.get("nextPage")
             if not next_page:
                 return assets
@@ -221,6 +243,51 @@ class ImmichClient:
                 page = int(next_page)
             except (TypeError, ValueError):
                 return assets
+
+    def tagged_assets(self, tag_id: str) -> list[ImmichAsset]:
+        """Videos carrying a tag."""
+        return self._search_videos({"tagIds": [tag_id]}, f"tag {tag_id}")
+
+    def albums(self) -> list[ImmichAlbum]:
+        """Every album this key can see — its own, and ones shared with it.
+
+        Immich's plain album listing is the account's own albums; albums
+        another account shared with it only come back with shared=true. Ask
+        for both and merge, since the shared-from-elsewhere case is the whole
+        reason album pulls exist.
+        """
+        by_id: dict[str, ImmichAlbum] = {}
+        for path in ("/api/albums", "/api/albums?shared=true"):
+            payload = self._get_json(path)
+            if not isinstance(payload, list):
+                raise ImmichError(f"Immich {path} did not return a list")
+            for raw in payload:
+                album = _album_from_payload(raw)
+                by_id.setdefault(album.id, album)
+        return sorted(by_id.values(), key=lambda album: album.name.casefold())
+
+    def album_named(self, value: str) -> ImmichAlbum:
+        """An album by id, or by name (case-insensitively) for the CLI."""
+        albums = self.albums()
+        for album in albums:
+            if album.id == value:
+                return album
+        matches = [album for album in albums if album.name.casefold() == value.casefold()]
+        if not matches:
+            available = ", ".join(album.name for album in albums)
+            raise ImmichError(f"No Immich album named {value!r}. Available: {available or 'none'}")
+        if len(matches) > 1:
+            raise ImmichError(f"More than one Immich album is named {value!r}; pass its id")
+        return matches[0]
+
+    def album_assets(self, album_id: str) -> list[ImmichAsset]:
+        """Videos in an album, including ones another account added or owns.
+
+        Immich 3 no longer lists an album's assets in the album itself, so
+        this goes through metadata search, which does cover a shared album's
+        assets when filtered by albumIds.
+        """
+        return self._search_videos({"albumIds": [album_id]}, f"album {album_id}")
 
     def download_asset(self, asset_id: str, target_path: Path) -> None:
         """Stream an original to disk. These are gigabytes; never buffer them."""

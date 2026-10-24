@@ -24,6 +24,7 @@ from apps.library.forms import (
     BulkTagForm,
     ClipsBrowserFilterForm,
     CombineBuilderSubmitForm,
+    ImmichAlbumImportForm,
     ScoringTuningForm,
     SourceVideosFilterForm,
     TagCategoryForm,
@@ -31,6 +32,8 @@ from apps.library.forms import (
     TypeAIngestMetadataForm,
     TypeBIngestForm,
 )
+from apps.library.immich import ImmichClient, ImmichError
+from apps.library.immich_ingest import new_videos
 from apps.library.models import Clip, Combine, CombineClip, Still, Tag, TagCategory, Video
 from apps.library.resumable_upload import (
     TUS_RESUMABLE_HEADER,
@@ -58,7 +61,7 @@ from apps.pipeline.enqueue import (
 )
 from apps.pipeline.extraction import select_clip_segments
 from apps.pipeline.job_queue import claim_timeout
-from apps.pipeline.models import Job, ScoringParams
+from apps.pipeline.models import IngestSettings, Job, ScoringParams
 from apps.pipeline.scoring import (
     SIGNAL_NAMES,
     get_active_scoring_params,
@@ -268,19 +271,82 @@ def type_b_ingest(request):
     return render(request, "library/type_b_ingest.html", {"form": form})
 
 
+def _last_imported_album_id() -> str:
+    """The album the most recent album pull used — the likeliest next pick."""
+    return (
+        Job.objects.filter(job_type=Job.JobType.INGEST)
+        .exclude(immich_album_id="")
+        .order_by("-created_at")
+        .values_list("immich_album_id", flat=True)
+        .first()
+        or ""
+    )
+
+
+@login_required
+def immich_import(request):
+    """Pick an Immich album and see which of its videos are new to NakaVid.
+
+    Only metadata is fetched here — the album list and one album's contents —
+    so it's fine in a request; the pull itself is queued by immich_scan.
+    With no album chosen, the last one pulled from is previewed, so the
+    everyday case is open the page, check the count, press Import.
+    """
+    form = ImmichAlbumImportForm(request.GET or None)
+    selected_id = form.cleaned_album_id() if form.is_valid() else ""
+    if not selected_id and "album_id" not in request.GET:
+        selected_id = _last_imported_album_id()
+
+    albums = []
+    album = None
+    video_count = 0
+    pending: list = []
+    error = ""
+    try:
+        client = ImmichClient()
+        albums = client.albums()
+        album = next((candidate for candidate in albums if candidate.id == selected_id), None)
+        if album is not None:
+            assets = client.album_assets(album.id)
+            video_count = sum(1 for asset in assets if asset.is_video)
+            pending = new_videos(assets)
+    except ImmichError as exc:
+        error = str(exc)
+
+    return render(
+        request,
+        "library/immich_import.html",
+        {
+            "albums": albums,
+            "album": album,
+            "video_count": video_count,
+            "new_videos": pending,
+            "error": error,
+            "add_tag": IngestSettings.load().immich_add_tag,
+        },
+    )
+
+
 @login_required
 @require_POST
 def immich_scan(request):
-    """Queue a scan for new Nakavid/add-tagged videos in Immich.
+    """Queue a pull of new videos from an Immich album — or, with no album
+    posted, of new Nakavid/add-tagged videos.
 
-    The scan itself — downloading whatever's new — is a background job, not
+    The pull itself — downloading whatever's new — is a background job, not
     this request: some of those files are gigabytes, and Django doesn't run
     long jobs in a request. New videos and their probe jobs will appear in
     the queue and browse pages as the worker gets to them, same as any other
     ingest path.
     """
-    enqueue_ingest_job()
-    messages.success(request, "Immich scan queued.")
+    form = ImmichAlbumImportForm(request.POST)
+    if not form.is_valid():
+        return HttpResponseBadRequest("Invalid album id")
+    album_id = form.cleaned_album_id()
+    enqueue_ingest_job(album_id=album_id)
+    messages.success(
+        request, "Immich album import queued." if album_id else "Immich tag scan queued."
+    )
     return redirect("queue-status")
 
 

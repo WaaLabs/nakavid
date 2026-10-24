@@ -1,17 +1,26 @@
-"""Pull tagged videos from Immich into the library.
+"""Pull videos from an Immich album, or tagged ones, into the library.
 
 Footage already arrives in Immich by phone backup, so this is usually the
 shortest path from filming something to having it scored — no second upload.
-Tag whatever is ready to import with the configured "add" tag in Immich
-(Settings -> Ingest settings in the web UI; Nakavid/add by default), then
-run this; only videos carrying that tag are pulled. Once a video is safely
-imported, its tag moves to the configured "imported" tag, so it doesn't sit
-there looking ready to pull all over again on the next run. Long recordings
-and short ones carry the same tag — each is classified long vs short by its
-own probed duration, not by which button or flag you used to pull it.
+
+--album NAME (or its id) pulls every video in that album that isn't in the
+library yet. It works for an album another account shared with this key's
+account — which a tag can't, since Immich only lets an asset's owner tag it —
+and writes nothing back to Immich: re-running it later pulls only what's
+been added since.
+
+Without --album, the pull is tag-based. Tag whatever is ready to import with
+the configured "add" tag in Immich (Settings -> Ingest settings in the web
+UI; Nakavid/add by default), then run this; only videos carrying that tag are
+pulled. Once a video is safely imported, its tag moves to the configured
+"imported" tag, so it doesn't sit there looking ready to pull all over again
+on the next run.
+
+Either way, long recordings and short ones are classified by their own probed
+duration, not by which button or flag you used to pull them.
 
 The same pull also runs as a background job when triggered from the web
-UI's "Scan Immich" button — see apps.library.immich_ingest.run_immich_ingest,
+UI's "From Immich" page — see apps.library.immich_ingest.run_immich_ingest,
 which this command is a thin CLI wrapper around.
 """
 
@@ -26,9 +35,17 @@ from apps.library.models import Video
 
 
 class Command(BaseCommand):
-    help = "Ingest Immich videos tagged for import."
+    help = "Ingest new videos from an Immich album, or ones tagged for import."
 
     def add_arguments(self, parser) -> None:
+        parser.add_argument(
+            "--album",
+            default=None,
+            help=(
+                "Immich album name (or id) to pull new videos from, shared albums "
+                "included. Overrides --tag; nothing is retagged."
+            ),
+        )
         parser.add_argument(
             "--tag",
             default=None,
@@ -87,6 +104,7 @@ class Command(BaseCommand):
         try:
             run_immich_ingest(
                 user=user,
+                album_id=options["album"],
                 tag=options["tag"],
                 imported_tag=options["imported_tag"],
                 video_type=video_type,

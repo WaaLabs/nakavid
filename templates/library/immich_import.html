@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Import from Immich — NakaVid{% endblock %}
+{% block heading %}Import from Immich{% endblock %}
+{% block intro %}
+<p class="intro">Pick an Immich album — shared albums included — and import the videos in it that aren't in NakaVid yet. Nothing in Immich is changed, so importing the same album again later only brings in what's been added since.</p>
+{% endblock %}
+
+{% block content %}
+  {% if error %}
+  <p class="errors">{{ error }}</p>
+  {% endif %}
+
+  {% if albums %}
+  <form method="get" class="filters">
+    <div class="field">
+      <label for="id_album_id">Album</label>
+      <select name="album_id" id="id_album_id">
+        <option value="">Choose an album…</option>
+        {% for candidate in albums %}
+        <option value="{{ candidate.id }}" {% if album and candidate.id == album.id %}selected{% endif %}>{{ candidate.name }} ({{ candidate.asset_count }} item{{ candidate.asset_count|pluralize }}){% if candidate.shared %} · shared{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="actions">
+      <button type="submit" class="button secondary">Show new videos</button>
+    </div>
+  </form>
+  {% elif not error %}
+  <p class="empty">NakaVid's Immich account can't see any albums yet.</p>
+  {% endif %}
+
+  {% if album %}
+  <h2>{{ album.name }}</h2>
+  <p class="hint">{{ video_count }} video{{ video_count|pluralize }} in this album, {{ new_videos|length }} new to NakaVid.</p>
+
+  {% if new_videos %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>File</th><th>Immich date</th></tr>
+      </thead>
+      <tbody>
+        {% for asset in new_videos %}
+        <tr><td>{{ asset.original_file_name }}</td><td>{{ asset.created_at|slice:":10" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <form method="post" action="{% url 'immich-scan' %}" class="actions">
+    {% csrf_token %}
+    <input type="hidden" name="album_id" value="{{ album.id }}" />
+    <button type="submit">Import {{ new_videos|length }} new video{{ new_videos|length|pluralize }}</button>
+  </form>
+  {% else %}
+  <p class="empty">Everything in this album is already in NakaVid.</p>
+  {% endif %}
+  {% endif %}
+
+  <h2>Tagged videos</h2>
+  <p class="hint">Or pull videos tagged <code>{{ add_tag }}</code> in Immich. Tags only work on footage NakaVid's own Immich account owns.</p>
+  <form method="post" action="{% url 'immich-scan' %}" class="actions">
+    {% csrf_token %}
+    <button type="submit" class="button secondary">Scan tagged videos</button>
+  </form>
+{% endblock %}

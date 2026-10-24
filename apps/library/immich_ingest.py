@@ -2,10 +2,11 @@
 
 `manage.py ingest_immich` and the web-triggered "Scan Immich" button (a
 queued Job.JobType.INGEST, handled in apps/pipeline/handlers.py) both need to
-run this same sequence: find the tag, list its videos, download whatever
-isn't already in the library, queue each for probing, then move the tag from
-"add" to "imported" in Immich. This module is that sequence, with no CLI or
-Job-specific code in it — callers supply where output lines go (or don't).
+run this same sequence: list the videos in an album (or carrying a tag),
+download whatever isn't already in the library, queue each for probing, and —
+for a tag pull only — move the tag from "add" to "imported" in Immich. This
+module is that sequence, with no CLI or Job-specific code in it — callers
+supply where output lines go (or don't).
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import get_valid_filename
 
-from apps.library.immich import ImmichClient, ImmichError
+from apps.library.immich import ImmichAsset, ImmichClient, ImmichError
 from apps.library.models import Clip, Video
 from apps.library.storage_paths import (
     build_originals_relative_path,
@@ -51,6 +52,17 @@ def _noop(_line: str) -> None:
     pass
 
 
+def imported_asset_ids() -> set[str]:
+    """Immich asset ids already in the library — what "new" is measured against."""
+    return set(Video.objects.exclude(immich_asset_id="").values_list("immich_asset_id", flat=True))
+
+
+def new_videos(assets: list[ImmichAsset]) -> list[ImmichAsset]:
+    """The videos among `assets` that NakaVid hasn't imported yet."""
+    already = imported_asset_ids()
+    return [asset for asset in assets if asset.is_video and asset.id not in already]
+
+
 def resolve_default_user():
     """The one superuser to attribute an ingest to, when nothing more specific
     says who — the CLI command's fallback when --user is omitted, and the
@@ -67,6 +79,7 @@ def resolve_default_user():
 def run_immich_ingest(
     *,
     user,
+    album_id: str | None = None,
     tag: str | None = None,
     imported_tag: str | None = None,
     video_type: str | None = None,
@@ -77,7 +90,14 @@ def run_immich_ingest(
     write_out=_noop,
     write_err=_noop,
 ) -> None:
-    """Pull every video tagged `tag` that isn't already in the library.
+    """Pull every video in an album, or tagged `tag`, that isn't already in
+    the library.
+
+    album_id, when given, selects the album pull: it reads the album's
+    contents (shared albums included) and writes nothing back to Immich —
+    "already imported" is NakaVid's own record of asset ids, so re-running
+    against the same album only ever pulls what's been added since. tag and
+    imported_tag are ignored then.
 
     tag/imported_tag default to None: the configured Immich tags from
     IngestSettings (editable at /admin/pipeline/ingestsettings/, same as
@@ -104,17 +124,22 @@ def run_immich_ingest(
     )
 
     client = ImmichClient()
-    immich_tag = client.tag_named(resolved_tag)
-    assets = client.tagged_assets(str(immich_tag["id"]))
+    immich_tag: dict | None = None
+    if album_id:
+        album = client.album_named(album_id)
+        assets = client.album_assets(album.id)
+        source = f"album {album.name!r}"
+    else:
+        immich_tag = client.tag_named(resolved_tag)
+        assets = client.tagged_assets(str(immich_tag["id"]))
+        source = f"tag {resolved_tag!r}"
 
     videos = [asset for asset in assets if asset.is_video]
-    write_out(f"tag {resolved_tag!r}: {len(assets)} asset(s), {len(videos)} video(s)")
+    write_out(f"{source}: {len(assets)} asset(s), {len(videos)} video(s)")
 
-    already = set(
-        Video.objects.exclude(immich_asset_id="").values_list("immich_asset_id", flat=True)
-    )
+    already = imported_asset_ids()
     pulled = skipped = 0
-    imported_asset_ids: list[str] = []
+    pulled_asset_ids: list[str] = []
     for asset in videos:
         if asset.id in already:
             skipped += 1
@@ -208,17 +233,17 @@ def run_immich_ingest(
                 )
             enqueue_probe_job(video=video)
         pulled += 1
-        imported_asset_ids.append(asset.id)
+        pulled_asset_ids.append(asset.id)
 
     verb = "would pull" if dry_run else "pulled"
     write_out(f"{verb} {pulled} video(s), skipped {skipped} already in the library")
 
-    if imported_asset_ids:
+    if immich_tag is not None and pulled_asset_ids:
         _retag_imported(
             client,
             resolved_imported_tag,
             str(immich_tag["id"]),
-            imported_asset_ids,
+            pulled_asset_ids,
             write_out,
             write_err,
         )
