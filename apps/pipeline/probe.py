@@ -69,11 +69,16 @@ def rotation_degrees(video_stream: dict) -> int:
     Phones record portrait as a landscape frame plus a rotation matrix, so the
     encoded width and height say nothing about which way up the video is.
     Reading only width/height recorded a portrait clip as landscape.
+
+    Returned clockwise, the way the legacy "rotate" tag already is. ffprobe
+    reports a display matrix's rotation counter-clockwise, so an iPhone
+    portrait clip's -90 means a 90° clockwise turn — reading it as 270
+    clockwise turned every such clip upside down.
     """
     for side_data in video_stream.get("side_data_list") or []:
         if "rotation" in side_data:
             try:
-                return int(side_data["rotation"]) % 360
+                return -int(side_data["rotation"]) % 360
             except (TypeError, ValueError):
                 continue
     tags = video_stream.get("tags") or {}
