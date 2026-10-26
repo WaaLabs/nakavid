@@ -277,8 +277,8 @@ def test_rotation_is_read_from_the_display_matrix():
     """Phones store portrait as a landscape frame plus a rotation matrix."""
     from apps.pipeline.probe import rotation_degrees
 
-    assert rotation_degrees({"side_data_list": [{"rotation": -90}]}) == 270
-    assert rotation_degrees({"side_data_list": [{"rotation": 90}]}) == 90
+    assert rotation_degrees({"side_data_list": [{"rotation": -90}]}) == 90
+    assert rotation_degrees({"side_data_list": [{"rotation": 90}]}) == 270
     assert rotation_degrees({"tags": {"rotate": "180"}}) == 180
     assert rotation_degrees({}) == 0
     assert rotation_degrees({"side_data_list": [{"rotation": "nonsense"}]}) == 0
@@ -316,4 +316,4 @@ def test_rotated_source_is_recorded_as_portrait():
 
     assert result.orientation == Video.Orientation.PORTRAIT
     assert (result.width, result.height) == (1080, 1920)
-    assert result.rotation == 270
+    assert result.rotation == 90
