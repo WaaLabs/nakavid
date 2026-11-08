@@ -13,6 +13,14 @@ from apps.pipeline.scoring import rescore_energy_curve
 
 User = get_user_model()
 
+# The "full marks at" fields every tuning submission carries.
+SATURATION = {
+    "face_saturation_count": "6",
+    "smile_saturation_ratio": "0.6",
+    "motion_saturation": "0.2",
+    "audio_saturation_rms": "0.1",
+}
+
 
 def _curve() -> list[dict]:
     """A quiet stretch, a face-heavy peak, then a loud peak."""
@@ -91,6 +99,7 @@ def test_weights_change_which_moments_win(client_logged_in, video):
         "min_clip_length_seconds": "4",
         "min_gap_seconds": "10",
         "peak_count": "1",
+        **SATURATION,
     }
 
     faces = client_logged_in.get(
@@ -144,6 +153,7 @@ def test_preview_does_not_touch_stored_state(client_logged_in, video):
             "min_clip_length_seconds": "4",
             "min_gap_seconds": "10",
             "peak_count": "3",
+            **SATURATION,
         },
     )
 
@@ -187,6 +197,7 @@ def test_apply_saves_params_and_queues_extraction_not_scoring(client_logged_in, 
             "min_clip_length_seconds": "4",
             "min_gap_seconds": "15",
             "peak_count": "8",
+            **SATURATION,
         },
     )
 
@@ -284,6 +295,7 @@ def test_apply_says_the_settings_are_global(client_logged_in, video):
             "min_clip_length_seconds": "4",
             "min_gap_seconds": "15",
             "peak_count": "8",
+            **SATURATION,
         },
         follow=True,
     )
