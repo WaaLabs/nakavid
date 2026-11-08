@@ -64,8 +64,10 @@ from apps.pipeline.job_queue import claim_timeout
 from apps.pipeline.models import IngestSettings, Job, ScoringParams
 from apps.pipeline.scoring import (
     SIGNAL_NAMES,
+    WindowSignals,
     get_active_scoring_params,
     rescore_energy_curve,
+    smiling_face_share,
 )
 
 
@@ -441,10 +443,22 @@ def _clip_peak_signals(clip: Clip) -> dict[str, str] | None:
     smile_ratio = signals.get("smile_ratio")
     motion_energy = signals.get("motion_energy")
     audio_rms = signals.get("audio_rms")
+    # Share of faces smiling — the stored smile_ratio is smiles per frame,
+    # which read as e.g. "117%" with a few faces in shot.
+    smiling = None
+    if smile_ratio is not None:
+        smiling = smiling_face_share(
+            WindowSignals(
+                face_count=float(face_count or 0.0),
+                smile_ratio=float(smile_ratio),
+                motion_energy=0.0,
+                audio_rms=0.0,
+            )
+        )
     return {
         "at_label": format_timecode_seconds(int(peak.get("start", 0))),
         "faces": f"{face_count:.1f}" if face_count is not None else "—",
-        "smiling": f"{smile_ratio * 100:.0f}%" if smile_ratio is not None else "—",
+        "smiling": f"{smiling * 100:.0f}%" if smiling is not None else "—",
         "motion": f"{motion_energy:.2f}" if motion_energy is not None else "—",
         "audio": f"{audio_rms:.3f}" if audio_rms is not None else "—",
     }

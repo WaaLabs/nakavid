@@ -52,6 +52,15 @@
       <div class="field"><label for="{{ form.smoothing_window_count.id_for_label }}">Smoothing</label>{{ form.smoothing_window_count }}</div>
     </div>
 
+    <h2>Full marks at</h2>
+    <p class="hint">The value at which each signal scores its full weight. Anything above counts the same, so set these high enough that a busy moment still beats an ordinary one.</p>
+    <div class="tuning-fields">
+      <div class="field"><label for="{{ form.face_saturation_count.id_for_label }}">Faces</label>{{ form.face_saturation_count }}</div>
+      <div class="field"><label for="{{ form.smile_saturation_ratio.id_for_label }}">Share smiling</label>{{ form.smile_saturation_ratio }}</div>
+      <div class="field"><label for="{{ form.motion_saturation.id_for_label }}">Motion</label>{{ form.motion_saturation }}</div>
+      <div class="field"><label for="{{ form.audio_saturation_rms.id_for_label }}">Audio</label>{{ form.audio_saturation_rms }}</div>
+    </div>
+
     <h2>Selection</h2>
     <p class="hint">How smoothed peaks become clips.</p>
     <div class="tuning-fields">

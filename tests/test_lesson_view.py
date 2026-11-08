@@ -217,7 +217,8 @@ def test_clip_card_shows_the_signals_behind_its_score(
     assert "Why this score" in content
     # Signals from the peak window (score 77, at 44s) — not the weaker one.
     assert "4.5" in content
-    assert "50%" in content
+    # Share of faces smiling: 0.5 smiles per frame across 4.5 faces.
+    assert "11%" in content
     assert "0.20" in content
     assert "0.080" in content
     assert f"#{params.pk}" in content
