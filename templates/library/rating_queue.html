@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Rate {{ kind }} — NakaVid{% endblock %}
+{% block heading %}Rate {{ kind }}{% endblock %}
+{% block intro %}
+<p class="intro">One unrated pick at a time, in shuffled order so a short session covers many recordings. Scores are hidden so they don't sway the call — judge it the way you'd judge it for a montage.</p>
+{% endblock %}
+
+{% block content %}
+<nav class="rating-queue__tabs" aria-label="What to rate">
+  <a href="{% url 'rating-queue' 'clips' %}" {% if kind == 'clips' %}aria-current="page"{% endif %}>Clips</a>
+  <a href="{% url 'rating-queue' 'stills' %}" {% if kind == 'stills' %}aria-current="page"{% endif %}>Stills</a>
+</nav>
+
+<p class="rating-queue__progress">
+  <span class="rating-queue__count rating-queue__count--up">{{ rated_up }} good</span>
+  <span class="rating-queue__count rating-queue__count--down">{{ rated_down }} bad</span>
+  <span class="rating-queue__count">{{ unrated_count }} unrated</span>
+  {% if skipped_count %}<span class="rating-queue__count">{{ skipped_count }} skipped this session</span>{% endif %}
+</p>
+
+{% if item %}
+<article class="panel rating-queue">
+  <div class="rating-queue__media">
+    {% if kind == 'clips' %}
+    <video
+      id="rating-queue-player"
+      controls
+      autoplay
+      playsinline
+      preload="auto"
+      {% if item.thumbnail_path %}poster="{% url 'clip-thumbnail' item.id %}"{% endif %}
+      src="{% url 'clip-stream' item.id %}"
+    ></video>
+    {% else %}
+    <img src="{% url 'still-image' item.id %}" alt="Still from {{ item.video.title }}" />
+    {% endif %}
+  </div>
+  <p class="rating-queue__source">
+    {% if item.video.is_long_recording %}<a href="{% url 'lesson-view' item.video.id %}">{{ item.video.title }}</a>{% else %}{{ item.video.title }}{% endif %}
+    · {% if kind == 'clips' %}{{ item.source_range_label }} · {{ item.duration_label }}{% else %}{{ item.capture_label }}{% endif %}
+  </p>
+  <form method="post" action="{% url 'rating-queue-submit' kind item.id %}" class="rating-queue__actions">
+    {% csrf_token %}
+    <button type="submit" name="rating" value="up" class="rating-queue__button rating-queue__button--up" data-key="g">Good <kbd>G</kbd></button>
+    <button type="submit" name="rating" value="down" class="rating-queue__button rating-queue__button--down" data-key="b">Bad <kbd>B</kbd></button>
+    <button type="submit" name="rating" value="skip" class="secondary" data-key="s">Skip <kbd>S</kbd></button>
+  </form>
+</article>
+{% else %}
+<div class="empty">
+  {% if skipped_count %}
+  <p>Nothing left but the {{ skipped_count }} you skipped.</p>
+  <form method="post" action="{% url 'rating-queue-reset-skipped' kind %}">
+    {% csrf_token %}
+    <button type="submit" class="secondary">Show skipped again</button>
+  </form>
+  {% else %}
+  <p>Every {{ kind|slice:":-1" }} is rated. Run <code>manage.py ratings_report</code> to see what they say.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/rating-queue.js' %}" defer></script>
+{% endblock %}
