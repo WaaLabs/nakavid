@@ -10,7 +10,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import CharField, Count
+from django.db.models.functions import MD5, Cast
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -837,6 +838,87 @@ def rate_still(request, still_id: int):
     except ValueError:
         return HttpResponseBadRequest("Invalid rating")
     return JsonResponse({"rating": rating})
+
+
+# What the rating queue can serve. Clips are long-recording extractions only:
+# a short recording is its own clip, so rating it says nothing about whether
+# extraction picked the right moment — which is what tuning needs to know.
+RATING_QUEUE_KINDS = ("clips", "stills")
+
+
+def _rating_queue_items(kind: str):
+    if kind == "clips":
+        return Clip.objects.filter(video__video_type=Video.VideoType.TYPE_A)
+    return Still.objects.all()
+
+
+def _rating_queue_skipped_key(kind: str) -> str:
+    return f"rating_queue_skipped_{kind}"
+
+
+@login_required
+def rating_queue(request, kind: str):
+    """One unrated pick at a time, so a rating session is a few keystrokes
+    per item rather than hunting through the browse pages.
+
+    Order is a stable shuffle (md5 of the id) rather than score or date, so a
+    short session still samples across many recordings and both ends of the
+    score range — a queue sorted by score would only ever show the best
+    picks, and the ratings would say nothing about the weak ones. Skipped
+    items stay unrated and are hidden for the rest of the session.
+    """
+    if kind not in RATING_QUEUE_KINDS:
+        raise Http404("Unknown rating queue")
+    items = _rating_queue_items(kind)
+    skipped = request.session.get(_rating_queue_skipped_key(kind), [])
+    unrated = items.filter(rating__isnull=True)
+    item = (
+        unrated.exclude(pk__in=skipped)
+        .select_related("video")
+        .annotate(shuffle=MD5(Cast("pk", output_field=CharField())))
+        .order_by("shuffle")
+        .first()
+    )
+    rated = items.filter(rating__isnull=False)
+    return render(
+        request,
+        "library/rating_queue.html",
+        {
+            "kind": kind,
+            "item": item,
+            "rated_up": rated.filter(rating=True).count(),
+            "rated_down": rated.filter(rating=False).count(),
+            "unrated_count": unrated.count(),
+            "skipped_count": len(skipped),
+        },
+    )
+
+
+@login_required
+@require_POST
+def rating_queue_submit(request, kind: str, item_id: int):
+    if kind not in RATING_QUEUE_KINDS:
+        raise Http404("Unknown rating queue")
+    instance = get_object_or_404(_rating_queue_items(kind), pk=item_id)
+    choice = request.POST.get("rating", "")
+    if choice == "skip":
+        key = _rating_queue_skipped_key(kind)
+        request.session[key] = [*request.session.get(key, []), instance.pk]
+    else:
+        try:
+            _apply_rating(instance=instance, rating_param=choice)
+        except ValueError:
+            return HttpResponseBadRequest("Invalid rating")
+    return redirect("rating-queue", kind=kind)
+
+
+@login_required
+@require_POST
+def rating_queue_reset_skipped(request, kind: str):
+    if kind not in RATING_QUEUE_KINDS:
+        raise Http404("Unknown rating queue")
+    request.session.pop(_rating_queue_skipped_key(kind), None)
+    return redirect("rating-queue", kind=kind)
 
 
 @login_required
