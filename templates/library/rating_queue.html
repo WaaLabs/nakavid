@@ -2,25 +2,26 @@
 {% load static %}
 
 {% block title %}Rate {{ kind }} — NakaVid{% endblock %}
-{% block heading %}Rate{% endblock %}
 
 {% block content %}
 <div class="rating-queue__toolbar">
+  <h1 class="rating-queue__heading">Rate</h1>
   <nav class="rating-queue__tabs" aria-label="What to rate">
     <a href="{% url 'rating-queue' 'clips' %}" {% if kind == 'clips' %}aria-current="page"{% endif %}>Clips</a>
     <a href="{% url 'rating-queue' 'stills' %}" {% if kind == 'stills' %}aria-current="page"{% endif %}>Stills</a>
   </nav>
   <p class="rating-queue__progress">
-    <span class="rating-queue__count rating-queue__count--up">{{ rated_up }} good</span>
-    <span class="rating-queue__count rating-queue__count--down">{{ rated_down }} bad</span>
-    <span class="rating-queue__count">{{ unrated_count }} unrated</span>
-    {% if skipped_count %}<span class="rating-queue__count">{{ skipped_count }} skipped</span>{% endif %}
+    <span class="rating-queue__count rating-queue__count--up" title="{{ rated_up }} rated good">{{ rated_up }} ✓</span>
+    <span class="rating-queue__count rating-queue__count--down" title="{{ rated_down }} rated bad">{{ rated_down }} ✗</span>
+    <span class="rating-queue__count" title="{{ unrated_count }} unrated">{{ unrated_count }}<span class="rating-queue__count-label"> left</span></span>
+    {% if skipped_count %}<span class="rating-queue__count rating-queue__count--skipped" title="{{ skipped_count }} skipped this session">{{ skipped_count }} skip</span>{% endif %}
   </p>
   <details class="rating-queue__help">
     <summary aria-label="About rating">?</summary>
     <div class="rating-queue__help-panel">
       One unrated pick at a time, in shuffled order so a short session covers many recordings.
       Scores are hidden so they don't sway the call — judge it the way you'd judge it for a montage.
+      Counts: ✓ rated good, ✗ rated bad, left still unrated, skip = skipped this session.
       Keys: <kbd>G</kbd> good, <kbd>B</kbd> bad, <kbd>S</kbd> skip.
     </div>
   </details>
