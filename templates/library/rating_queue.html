@@ -2,26 +2,32 @@
 {% load static %}
 
 {% block title %}Rate {{ kind }} — NakaVid{% endblock %}
-{% block heading %}Rate {{ kind }}{% endblock %}
-{% block intro %}
-<p class="intro">One unrated pick at a time, in shuffled order so a short session covers many recordings. Scores are hidden so they don't sway the call — judge it the way you'd judge it for a montage.</p>
-{% endblock %}
+{% block heading %}Rate{% endblock %}
 
 {% block content %}
-<nav class="rating-queue__tabs" aria-label="What to rate">
-  <a href="{% url 'rating-queue' 'clips' %}" {% if kind == 'clips' %}aria-current="page"{% endif %}>Clips</a>
-  <a href="{% url 'rating-queue' 'stills' %}" {% if kind == 'stills' %}aria-current="page"{% endif %}>Stills</a>
-</nav>
-
-<p class="rating-queue__progress">
-  <span class="rating-queue__count rating-queue__count--up">{{ rated_up }} good</span>
-  <span class="rating-queue__count rating-queue__count--down">{{ rated_down }} bad</span>
-  <span class="rating-queue__count">{{ unrated_count }} unrated</span>
-  {% if skipped_count %}<span class="rating-queue__count">{{ skipped_count }} skipped this session</span>{% endif %}
-</p>
+<div class="rating-queue__toolbar">
+  <nav class="rating-queue__tabs" aria-label="What to rate">
+    <a href="{% url 'rating-queue' 'clips' %}" {% if kind == 'clips' %}aria-current="page"{% endif %}>Clips</a>
+    <a href="{% url 'rating-queue' 'stills' %}" {% if kind == 'stills' %}aria-current="page"{% endif %}>Stills</a>
+  </nav>
+  <p class="rating-queue__progress">
+    <span class="rating-queue__count rating-queue__count--up">{{ rated_up }} good</span>
+    <span class="rating-queue__count rating-queue__count--down">{{ rated_down }} bad</span>
+    <span class="rating-queue__count">{{ unrated_count }} unrated</span>
+    {% if skipped_count %}<span class="rating-queue__count">{{ skipped_count }} skipped</span>{% endif %}
+  </p>
+  <details class="rating-queue__help">
+    <summary aria-label="About rating">?</summary>
+    <div class="rating-queue__help-panel">
+      One unrated pick at a time, in shuffled order so a short session covers many recordings.
+      Scores are hidden so they don't sway the call — judge it the way you'd judge it for a montage.
+      Keys: <kbd>G</kbd> good, <kbd>B</kbd> bad, <kbd>S</kbd> skip.
+    </div>
+  </details>
+</div>
 
 {% if item %}
-<article class="panel rating-queue">
+<article class="rating-queue">
   <div class="rating-queue__media">
     {% if kind == 'clips' %}
     <video
@@ -37,16 +43,18 @@
     <img src="{% url 'still-image' item.id %}" alt="Still from {{ item.video.title }}" />
     {% endif %}
   </div>
-  <p class="rating-queue__source">
-    {% if item.video.is_long_recording %}<a href="{% url 'lesson-view' item.video.id %}">{{ item.video.title }}</a>{% else %}{{ item.video.title }}{% endif %}
-    · {% if kind == 'clips' %}{{ item.source_range_label }} · {{ item.duration_label }}{% else %}{{ item.capture_label }}{% endif %}
-  </p>
-  <form method="post" action="{% url 'rating-queue-submit' kind item.id %}" class="rating-queue__actions">
-    {% csrf_token %}
-    <button type="submit" name="rating" value="up" class="rating-queue__button rating-queue__button--up" data-key="g">Good <kbd>G</kbd></button>
-    <button type="submit" name="rating" value="down" class="rating-queue__button rating-queue__button--down" data-key="b">Bad <kbd>B</kbd></button>
-    <button type="submit" name="rating" value="skip" class="secondary" data-key="s">Skip <kbd>S</kbd></button>
-  </form>
+  <div class="rating-queue__footer">
+    <p class="rating-queue__source">
+      {% if item.video.is_long_recording %}<a href="{% url 'lesson-view' item.video.id %}">{{ item.video.title }}</a>{% else %}{{ item.video.title }}{% endif %}
+      · {% if kind == 'clips' %}{{ item.source_range_label }} · {{ item.duration_label }}{% else %}{{ item.capture_label }}{% endif %}
+    </p>
+    <form method="post" action="{% url 'rating-queue-submit' kind item.id %}" class="rating-queue__actions">
+      {% csrf_token %}
+      <button type="submit" name="rating" value="up" class="rating-queue__button rating-queue__button--up" data-key="g">Good <kbd>G</kbd></button>
+      <button type="submit" name="rating" value="down" class="rating-queue__button rating-queue__button--down" data-key="b">Bad <kbd>B</kbd></button>
+      <button type="submit" name="rating" value="skip" class="secondary" data-key="s">Skip <kbd>S</kbd></button>
+    </form>
+  </div>
 </article>
 {% else %}
 <div class="empty">
