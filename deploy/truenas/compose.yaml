@@ -1,0 +1,145 @@
+# NakaVid on TrueNAS — paste into Apps > Discover Apps > ⋮ > Install via YAML.
+# Before pasting, replace every CHANGE_ME and the /mnt/tank/... paths. See
+# deploy/truenas/README.md for the datasets to create first.
+#
+# Network posture (AGENTS.md, "Privacy"):
+#   backend  internal: no route out of Docker at all. postgres, web and worker
+#            live only here, so footage cannot leave from them.
+#   edge     ordinary bridge. Only caddy joins it, to publish the LAN port and
+#            to relay the worker's Immich requests to the one configured host.
+# A future export gate for footage tagged safe for external use would be the
+# one other container on edge, serving only those items.
+
+name: nakavid
+
+x-app-env: &app-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: nakavid
+  POSTGRES_USER: nakavid
+  POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
+  DJANGO_SECRET_KEY: CHANGE_ME_LONG_RANDOM_STRING
+  DJANGO_DEBUG: "0"
+  # The NAS's hostname and/or IP as you type it in the browser.
+  DJANGO_ALLOWED_HOSTS: CHANGE_ME_NAS_HOSTNAME,CHANGE_ME_NAS_IP
+  # Same hosts with scheme and port, e.g. http://nas.lan:8080
+  DJANGO_CSRF_TRUSTED_ORIGINS: http://CHANGE_ME_NAS_HOSTNAME:8080,http://CHANGE_ME_NAS_IP:8080
+  NAKAVID_STORAGE_ROOT: /srv/nakavid
+  # The worker reaches Immich through caddy's relay below, never directly.
+  NAKAVID_IMMICH_URL: http://caddy:2283
+  NAKAVID_IMMICH_API_KEY: CHANGE_ME_IMMICH_API_KEY
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nakavid
+      POSTGRES_USER: nakavid
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
+    volumes:
+      - /mnt/tank/nakavid/postgres:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nakavid -d nakavid"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    image: ghcr.io/waalabs/nakavid:latest
+    restart: unless-stopped
+    command: ["web"]
+    environment: *app-env
+    volumes:
+      - /mnt/tank/nakavid/media:/srv/nakavid
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/deploy/entrypoint.sh", "healthcheck"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 20s
+
+  worker:
+    image: ghcr.io/waalabs/nakavid:latest
+    restart: unless-stopped
+    command: ["worker"]
+    environment: *app-env
+    volumes:
+      - /mnt/tank/nakavid/media:/srv/nakavid
+    networks: [backend]
+    depends_on:
+      # web applies migrations on start; the worker waits until it's up.
+      web:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      # Immich on the LAN, as a URL caddy can reach: http://192.168.1.20:2283,
+      # or https://photos.example.lan if it sits behind TLS. Prefer an IP or a
+      # name your LAN DNS answers; Docker may resolve names via public DNS.
+      NAKAVID_IMMICH_UPSTREAM: CHANGE_ME_IMMICH_URL
+    ports:
+      # TrueNAS's own UI holds 80/443.
+      - "8080:80"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes:
+      - /mnt/tank/nakavid/media:/srv/nakavid:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge, backend]
+    depends_on:
+      web:
+        condition: service_healthy
+
+networks:
+  backend:
+    internal: true
+  edge: {}
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+configs:
+  caddyfile:
+    content: |
+      {
+        auto_https off
+        admin off
+      }
+
+      :80 {
+        encode zstd gzip
+
+        @health path /healthz
+        respond @health "ok" 200
+
+        # Django authorises; Caddy intercepts X-Accel-Redirect and
+        # range-serves the file, so video bytes never pass through Django.
+        reverse_proxy web:8000 {
+          @accel header X-Accel-Redirect *
+          handle_response @accel {
+            root * /srv/nakavid
+            rewrite * {rp.header.X-Accel-Redirect}
+            method GET
+            file_server
+          }
+        }
+      }
+
+      # Immich relay. Listens on the internal backend network only (this
+      # port is not published), and forwards to one fixed LAN host.
+      :2283 {
+        reverse_proxy {$$NAKAVID_IMMICH_UPSTREAM} {
+          header_up Host {upstream_hostport}
+        }
+      }
