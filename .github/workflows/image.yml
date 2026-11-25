@@ -1,0 +1,32 @@
+name: Image
+
+# Builds the container image TrueNAS runs (see deploy/truenas/) and pushes it
+# to GitHub's container registry. The image holds code only — never footage.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/waalabs/nakavid:latest
+            ghcr.io/waalabs/nakavid:${{ github.sha }}

@@ -59,3 +59,8 @@ Clip playback requires Caddy in front of Django so the proxy can intercept `X-Ac
 3. Open `http://localhost/clips/` (Caddy on port 80 → Django). Upload a Type B clip at `/ingest/type-b/`, then play it inline from the clips grid.
 
 The `clip_stream` view checks session auth and returns an empty body with `X-Accel-Redirect` pointing at the on-disk path under `/srv/nakavid`. Caddy's `handle_response` block serves the file with HTTP range support. Unauthenticated requests to `/clips/<id>/stream/` are redirected to login by Django before any bytes are handed off.
+
+## Deploying on TrueNAS
+
+The production setup (container image, Compose app, network posture, moving
+the library over) is in [`deploy/truenas/README.md`](deploy/truenas/README.md).
