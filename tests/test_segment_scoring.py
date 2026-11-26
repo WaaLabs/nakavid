@@ -14,11 +14,13 @@ from apps.pipeline.handlers import handle_probe, handle_score
 from apps.pipeline.models import Job, ScoringParams
 from apps.pipeline.probe import ProbeResult
 from apps.pipeline.scoring import (
+    ScoringError,
     SegmentScoringResult,
     WindowSignals,
     aggregate_window_score,
     build_windows,
     score_windows,
+    smiling_face_share,
     smooth_scores,
 )
 from apps.pipeline.worker import process_job
@@ -50,6 +52,9 @@ def test_aggregate_window_score_uses_scoring_params():
         audio_weight=Decimal("0.250"),
         silence_penalty_weight=Decimal("0.100"),
         silence_rms_threshold=Decimal("0.0100"),
+        face_saturation_count=Decimal("6.00"),
+        motion_saturation=Decimal("1.000"),
+        audio_saturation_rms=Decimal("0.1000"),
     )
     signals = WindowSignals(
         face_count=3.0,
@@ -60,7 +65,75 @@ def test_aggregate_window_score_uses_scoring_params():
 
     score = aggregate_window_score(signals=signals, params=params)
 
-    assert score == pytest.approx(75.0)
+    # face 3/6 = 0.5, motion 0.5, audio 0.05/0.1 = 0.5 -> 50 at any weights.
+    assert score == pytest.approx(50.0)
+
+
+def _equal_weights(**saturation) -> ScoringParams:
+    return ScoringParams(
+        face_weight=Decimal("0.250"),
+        smile_weight=Decimal("0.250"),
+        motion_weight=Decimal("0.250"),
+        audio_weight=Decimal("0.250"),
+        silence_penalty_weight=Decimal("0.000"),
+        **saturation,
+    )
+
+
+def test_more_faces_than_the_old_cap_still_raise_the_score():
+    """A full classroom used to max the face signal at 3 faces, so 3 and 6
+    scored the same and face count stopped separating moments."""
+    params = _equal_weights(face_saturation_count=Decimal("6.00"))
+    three = WindowSignals(face_count=3.0, smile_ratio=0.0, motion_energy=0.1, audio_rms=0.05)
+    six = WindowSignals(face_count=6.0, smile_ratio=0.0, motion_energy=0.1, audio_rms=0.05)
+
+    assert aggregate_window_score(signals=six, params=params) > aggregate_window_score(
+        signals=three, params=params
+    )
+
+
+def test_signals_saturate_at_their_configured_value():
+    params = _equal_weights(face_saturation_count=Decimal("6.00"))
+    at_cap = WindowSignals(face_count=6.0, smile_ratio=0.0, motion_energy=0.0, audio_rms=0.05)
+    beyond = WindowSignals(face_count=12.0, smile_ratio=0.0, motion_energy=0.0, audio_rms=0.05)
+
+    assert aggregate_window_score(signals=at_cap, params=params) == pytest.approx(
+        aggregate_window_score(signals=beyond, params=params)
+    )
+
+
+def test_motion_saturation_scales_real_world_motion_to_full_range():
+    """Measured motion tops out around 0.2-0.3, so a cap of 1.0 meant the
+    motion weight could only ever contribute about a fifth of itself."""
+    params = _equal_weights(motion_saturation=Decimal("0.200"))
+    signals = WindowSignals(face_count=0.0, smile_ratio=0.0, motion_energy=0.2, audio_rms=0.0)
+
+    assert aggregate_window_score(signals=signals, params=params) == pytest.approx(25.0)
+
+
+def test_smile_counts_the_share_of_faces_smiling_not_smiles_per_frame():
+    params = _equal_weights(smile_saturation_ratio=Decimal("1.00"))
+    # Both rooms have one smile per frame; in the big room that's 1 face in 6.
+    small_room = WindowSignals(face_count=1.0, smile_ratio=1.0, motion_energy=0.0, audio_rms=0.0)
+    big_room = WindowSignals(face_count=6.0, smile_ratio=1.0, motion_energy=0.0, audio_rms=0.0)
+
+    assert smiling_face_share(small_room) == pytest.approx(1.0)
+    assert smiling_face_share(big_room) == pytest.approx(1 / 6)
+    assert smiling_face_share(
+        WindowSignals(face_count=0.0, smile_ratio=0.5, motion_energy=0.0, audio_rms=0.0)
+    ) == pytest.approx(0.0)
+    # With only the smile weight on, the score is the smiling share itself.
+    params.face_weight = params.motion_weight = params.audio_weight = Decimal("0")
+    assert aggregate_window_score(signals=small_room, params=params) == pytest.approx(100.0)
+    assert aggregate_window_score(signals=big_room, params=params) == pytest.approx(100 / 6)
+
+
+def test_non_positive_saturation_is_rejected():
+    params = _equal_weights(motion_saturation=Decimal("0.000"))
+    signals = WindowSignals(face_count=1.0, smile_ratio=0.0, motion_energy=0.1, audio_rms=0.05)
+
+    with pytest.raises(ScoringError):
+        aggregate_window_score(signals=signals, params=params)
 
 
 def test_aggregate_window_score_applies_silence_penalty():

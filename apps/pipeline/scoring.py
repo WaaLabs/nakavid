@@ -66,11 +66,32 @@ def build_windows(
     return windows
 
 
+def smiling_face_share(signals: WindowSignals) -> float:
+    """Share of detected faces that are smiling, 0-1.
+
+    The stored smile_ratio is smiles *per frame*, despite its name, so with
+    several faces in shot it exceeded 1.0 and mostly re-measured face count.
+    Dividing by faces per frame (both are averages over the same frames)
+    turns it into how much of the room is smiling, which is the signal the
+    smile weight is meant to carry. Stored curves keep the per-frame value
+    so they can be re-scored without decoding.
+    """
+    if signals.face_count <= 0:
+        return 0.0
+    return min(max(signals.smile_ratio / signals.face_count, 0.0), 1.0)
+
+
+def _normalise(value: float, saturation: float) -> float:
+    if saturation <= 0:
+        raise ScoringError("ScoringParams saturation values must be positive")
+    return min(max(value / saturation, 0.0), 1.0)
+
+
 def aggregate_window_score(*, signals: WindowSignals, params: ScoringParams) -> float:
-    face_component = min(signals.face_count / 3.0, 1.0)
-    smile_component = min(max(signals.smile_ratio, 0.0), 1.0)
-    motion_component = min(max(signals.motion_energy, 0.0), 1.0)
-    audio_component = min(max(signals.audio_rms * 10.0, 0.0), 1.0)
+    face_component = _normalise(signals.face_count, float(params.face_saturation_count))
+    smile_component = _normalise(smiling_face_share(signals), float(params.smile_saturation_ratio))
+    motion_component = _normalise(signals.motion_energy, float(params.motion_saturation))
+    audio_component = _normalise(signals.audio_rms, float(params.audio_saturation_rms))
 
     total_weight = float(
         params.face_weight + params.smile_weight + params.motion_weight + params.audio_weight

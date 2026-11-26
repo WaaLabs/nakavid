@@ -14,6 +14,22 @@ class ScoringParams(models.Model):
     audio_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
     silence_penalty_weight = models.DecimalField(max_digits=4, decimal_places=3, default=0.100)
     silence_rms_threshold = models.DecimalField(max_digits=6, decimal_places=4, default=0.0100)
+    # The value at which each signal counts as "full marks" (component 1.0)
+    # when it is normalised to 0-1 before weighting. Each was a hard-coded
+    # cap: 3 faces, 1 smile per frame, motion 1.0, audio x10. On real long
+    # recordings the face cap was hit by 47% of windows and the smile cap by
+    # 21% — a full classroom always has 3+ faces — so those two signals
+    # stopped telling one moment from another, while motion never got near
+    # its cap (p99 0.22) and so contributed at most ~a fifth of its weight.
+    # Defaults sit near the 98th percentile measured over 4,527 windows from
+    # 12 long recordings, so very few windows saturate. audio keeps the old
+    # effective 0.1 (it was already sensibly scaled). Smile saturation is a
+    # share of detected faces that are smiling, not smiles per frame — see
+    # aggregate_window_score.
+    face_saturation_count = models.DecimalField(max_digits=4, decimal_places=2, default=6.00)
+    smile_saturation_ratio = models.DecimalField(max_digits=3, decimal_places=2, default=0.60)
+    motion_saturation = models.DecimalField(max_digits=4, decimal_places=3, default=0.200)
+    audio_saturation_rms = models.DecimalField(max_digits=5, decimal_places=4, default=0.1000)
     window_size_seconds = models.PositiveSmallIntegerField(default=4)
     step_seconds = models.PositiveSmallIntegerField(default=2)
     smoothing_window_count = models.PositiveSmallIntegerField(default=3)

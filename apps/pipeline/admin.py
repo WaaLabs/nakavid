@@ -49,6 +49,23 @@ class ScoringParamsAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Signal saturation",
+            {
+                "description": (
+                    "The value at which each signal earns its full weight; anything "
+                    "above counts the same. Set too low and the signal is maxed out "
+                    "in most windows, so it stops separating good moments from "
+                    "ordinary ones. Smile is the share of detected faces smiling."
+                ),
+                "fields": (
+                    "face_saturation_count",
+                    "smile_saturation_ratio",
+                    "motion_saturation",
+                    "audio_saturation_rms",
+                ),
+            },
+        ),
+        (
             "Window slicing",
             {
                 "description": (
